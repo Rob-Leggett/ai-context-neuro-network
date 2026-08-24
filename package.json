@@ -1,0 +1,42 @@
+{
+  "name": "ai-context-neuro-network",
+  "version": "0.1.0",
+  "description": "A local-first neuro network that captures, connects, visualizes and grows context from your AI chats.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/server/main.ts",
+    "start": "node dist/server/main.js",
+    "mcp": "tsx src/mcp/main.ts",
+    "import:chatgpt": "tsx src/ingest/cli.ts chatgpt",
+    "import:copilot": "tsx src/ingest/cli.ts copilot",
+    "analyze": "tsx src/analyze/cli.ts",
+    "web:dev": "vite --config web/vite.config.ts",
+    "web:build": "vite build --config web/vite.config.ts",
+    "test": "node --test --import tsx dist/**/*.test.js || node --test --import tsx \"src/**/*.test.ts\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fastify/static": "^7.0.4",
+    "@fastify/websocket": "^10.0.1",
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "@xenova/transformers": "^2.17.2",
+    "better-sqlite3": "^11.5.0",
+    "fastify": "^4.28.1",
+    "graphology": "^0.25.4",
+    "graphology-communities-louvain": "^2.0.1",
+    "graphology-layout-forceatlas2": "^0.10.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^22.7.5",
+    "sigma": "^3.0.0",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.8"
+  }
+}

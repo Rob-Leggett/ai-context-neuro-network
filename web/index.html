@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Context Neuro Network</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header id="topbar">
+        <div class="brand">
+          <span class="logo">⚡</span>
+          <span>Context Neuro Network</span>
+        </div>
+        <div class="search">
+          <input id="search" type="text" placeholder="Search concepts…" autocomplete="off" />
+          <div id="search-results"></div>
+        </div>
+        <div id="stats" class="stats"></div>
+        <div class="actions">
+          <button id="btn-analyze" title="Detect patterns & decisions">Analyze</button>
+          <button id="btn-tools" title="Self-updating tools">Tools</button>
+          <label class="toggle"><input type="checkbox" id="live" checked /> Live</label>
+        </div>
+      </header>
+
+      <div id="sigma"></div>
+
+      <aside id="panel" class="hidden">
+        <button id="panel-close">×</button>
+        <div id="panel-body"></div>
+      </aside>
+
+      <div id="legend"></div>
+      <div id="zoomhint" class="zoomhint">Scroll to zoom · macro clusters → micro concepts</div>
+
+      <div id="modal" class="hidden">
+        <div class="modal-card">
+          <button id="modal-close">×</button>
+          <div id="modal-body"></div>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

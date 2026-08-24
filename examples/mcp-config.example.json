@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "context-neuro-network": {
+      "type": "local",
+      "command": "npx",
+      "args": ["tsx", "src/mcp/main.ts"],
+      "cwd": "/absolute/path/to/ai-context-neuro-network",
+      "env": {
+        "CNN_DB_PATH": "/absolute/path/to/ai-context-neuro-network/data/neuro.sqlite",
+        "CNN_EMBEDDINGS": "1"
+      },
+      "tools": ["*"]
+    }
+  }
+}
