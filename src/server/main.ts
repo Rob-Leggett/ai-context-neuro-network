@@ -20,6 +20,17 @@ export async function buildServer() {
   const registry = new ToolRegistry(db, ctx.store);
 
   const app = Fastify({ logger: { level: process.env.CNN_LOG || 'info' } });
+  // Tolerate empty-body JSON POSTs (e.g. /api/analyze) instead of 400-ing.
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
+    const text = (body as string)?.trim();
+    if (!text) return done(null, {});
+    try {
+      done(null, JSON.parse(text));
+    } catch (err: any) {
+      err.statusCode = 400;
+      done(err, undefined);
+    }
+  });
   await app.register(fastifyWebsocket);
 
   // ---- static frontend (built by `npm run web:build`) ----------------------

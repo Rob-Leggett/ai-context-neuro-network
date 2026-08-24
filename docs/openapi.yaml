@@ -52,8 +52,12 @@ paths:
   /api/graph:
     get:
       tags: [Graph]
-      summary: Renderable graph view (top-N nodes, induced edges, communities)
+      summary: Hierarchical graph view (worlds -> regions -> concepts)
       operationId: getGraph
+      description: >
+        Top-N nodes by weight with their induced edges, plus a two-level cluster
+        hierarchy: coarse `worlds` each containing fine-grained `subs` (regions).
+        Every node carries its `world` id and `sub` region key.
       parameters:
         - name: limit
           in: query
@@ -422,7 +426,7 @@ components:
 
     ViewNode:
       type: object
-      required: [id, label, kind, weight, mentions, degree, community]
+      required: [id, label, kind, weight, mentions, degree, community, world, sub]
       properties:
         id: { type: integer }
         label: { type: string }
@@ -430,7 +434,9 @@ components:
         weight: { type: number }
         mentions: { type: integer }
         degree: { type: integer }
-        community: { type: integer, description: Louvain community id }
+        community: { type: integer, description: 'Deprecated alias of `world` (kept for compatibility).' }
+        world: { type: integer, description: 'Coarse top-level cluster id — a "world".' }
+        sub: { type: string, description: 'Fine sub-cluster (region) key, formatted `world:sub`.' }
 
     ViewEdge:
       type: object
@@ -444,19 +450,48 @@ components:
 
     Community:
       type: object
+      description: 'Deprecated alias of a World summary (kept for compatibility).'
       required: [id, size, label]
       properties:
         id: { type: integer }
         size: { type: integer }
         label: { type: string, description: Label of the highest-weight member }
 
+    SubCluster:
+      type: object
+      description: A fine-grained region within a world.
+      required: [key, label, size]
+      properties:
+        key: { type: string, description: 'Region key, formatted `world:sub`.' }
+        label: { type: string, description: Label of the region's highest-weight member }
+        size: { type: integer }
+
+    World:
+      type: object
+      description: A coarse top-level cluster containing sub-cluster regions.
+      required: [id, label, size, subs]
+      properties:
+        id: { type: integer }
+        label: { type: string, description: Label of the world's highest-weight member }
+        size: { type: integer, description: Number of member concepts }
+        subs:
+          type: array
+          items: { $ref: '#/components/schemas/SubCluster' }
+
     GraphView:
       type: object
-      required: [nodes, edges, communities]
+      required: [nodes, edges, communities, worlds]
       properties:
         nodes: { type: array, items: { $ref: '#/components/schemas/ViewNode' } }
         edges: { type: array, items: { $ref: '#/components/schemas/ViewEdge' } }
-        communities: { type: array, items: { $ref: '#/components/schemas/Community' } }
+        communities:
+          type: array
+          description: 'Deprecated alias of `worlds` (id/size/label only).'
+          items: { $ref: '#/components/schemas/Community' }
+        worlds:
+          type: array
+          description: 'Hierarchical clusters: worlds -> regions (subs) -> concepts.'
+          items: { $ref: '#/components/schemas/World' }
 
     Observation:
       type: object

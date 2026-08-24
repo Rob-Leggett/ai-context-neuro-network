@@ -15,7 +15,7 @@ on your machine with a tiny footprint.
 |---|---|
 | **Capture connections** | Extracts concepts, entities, decisions and their relationships from every message, with full provenance back to the source conversation. |
 | **See how they connect** | A WebGL graph (Sigma.js) renders the whole network; click any node to inspect its connections and where it came from. |
-| **Zoom micro ↔ macro** | Louvain community detection groups concepts into clusters. Zoom out for themes/clusters, zoom in for individual concepts (level-of-detail labels). |
+| **Zoom micro ↔ macro** | Hierarchical clustering builds **worlds → regions → concepts**. Zoom out to a handful of named worlds, click one to dive into its regions, then individual concepts. |
 | **Grows from ChatGPT & Copilot** | An MCP server (`remember` / `link` / `recall`) lets both assistants write to the network *live*, **plus** importers for ChatGPT exports and the Copilot CLI session store. |
 | **Local & low-resource** | Single Node process + one SQLite file. Optional on-device embeddings (a ~25 MB MiniLM model). No cloud, no external services. |
 | **UI navigable** | Search, focus/zoom-to-node, neighborhood expansion, live updates over WebSocket. |
@@ -55,7 +55,7 @@ ChatGPT has no local database, so you seed it from an official data export:
 3. Import it:
 
    ```bash
-   npm run import:chatgpt -- /path/to/conversations.json
+   npm run import:chatgpt -- ~/Downloads/conversations.json
    ```
 
 The importer linearizes each conversation's message tree and ingests every user/assistant
@@ -117,7 +117,7 @@ src/
     importers.ts       ChatGPT export + Copilot session-store importers
   analyze/             pattern & decision analyzer (hubs, clusters, themes)
   tools/               self-updating tool registry (safe, human-approved)
-  server/              Fastify HTTP + WebSocket API, Louvain graph view
+  server/              Fastify HTTP + WebSocket API, hierarchical graph view
   mcp/                 MCP stdio server (live growth channel)
 web/                   Vite + Sigma.js WebGL front-end
 ```

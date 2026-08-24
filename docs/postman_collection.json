@@ -57,7 +57,7 @@
               "originalRequest": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/graph?limit=1500", "host": ["{{baseUrl}}"], "path": ["api", "graph"], "query": [{ "key": "limit", "value": "1500" }] } },
               "status": "OK", "code": 200, "_postman_previewlanguage": "json",
               "header": [{ "key": "Content-Type", "value": "application/json; charset=utf-8" }],
-              "body": "{\n  \"nodes\": [\n    { \"id\": 69, \"label\": \"Users\", \"kind\": \"entity\", \"weight\": 512.5, \"mentions\": 210, \"degree\": 1908, \"community\": 2 }\n  ],\n  \"edges\": [\n    { \"id\": 1, \"source\": 69, \"target\": 70, \"kind\": \"related\", \"weight\": 3.5 }\n  ],\n  \"communities\": [\n    { \"id\": 2, \"size\": 140, \"label\": \"CIC\" }\n  ]\n}"
+              "body": "{\n  \"nodes\": [\n    { \"id\": 69, \"label\": \"Users\", \"kind\": \"entity\", \"weight\": 512.5, \"mentions\": 210, \"degree\": 1908, \"community\": 2, \"world\": 2, \"sub\": \"2:0\" }\n  ],\n  \"edges\": [\n    { \"id\": 1, \"source\": 69, \"target\": 70, \"kind\": \"related\", \"weight\": 3.5 }\n  ],\n  \"communities\": [\n    { \"id\": 2, \"size\": 140, \"label\": \"CIC\" }\n  ],\n  \"worlds\": [\n    { \"id\": 2, \"label\": \"CIC\", \"size\": 299, \"subs\": [ { \"key\": \"2:0\", \"label\": \"CIC\", \"size\": 140 }, { \"key\": \"2:1\", \"label\": \"API\", \"size\": 63 } ] }\n  ]\n}"
             },
             {
               "name": "500 Server Error",
