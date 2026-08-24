@@ -1,0 +1,525 @@
+openapi: 3.1.0
+info:
+  title: Context Neuro Network API
+  version: 0.1.0
+  description: >
+    HTTP + WebSocket API for the Context Neuro Network — a local-first knowledge
+    graph that captures, connects, visualizes and grows context from AI chats.
+
+
+    Most endpoints return HTTP 200. Endpoints that can fail on bad input return a
+    200 response containing an `error` string (application-level error) — these are
+    documented per-operation. Transport/framework failures use standard HTTP status
+    codes (400, 404, 415, 500) with the Fastify error envelope (`ErrorResponse`).
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: http://127.0.0.1:4319
+    description: Local server (default)
+
+tags:
+  - name: Graph
+    description: Read the network and its structure
+  - name: Ingest
+    description: Grow the network
+  - name: Analysis
+    description: Patterns & decisions
+  - name: Tools
+    description: Self-updating tool registry
+
+paths:
+  /api/stats:
+    get:
+      tags: [Graph]
+      summary: Network size and configuration
+      operationId: getStats
+      responses:
+        '200':
+          description: Current network statistics
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Stats' }
+              example:
+                nodes: 31683
+                edges: 287718
+                sources: 91
+                observations: 69377
+                embeddings: false
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /api/graph:
+    get:
+      tags: [Graph]
+      summary: Renderable graph view (top-N nodes, induced edges, communities)
+      operationId: getGraph
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of nodes (by weight) to return.
+          schema: { type: integer, minimum: 1, default: 1500 }
+      responses:
+        '200':
+          description: Graph view with Louvain community assignments
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GraphView' }
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /api/node/{id}:
+    get:
+      tags: [Graph]
+      summary: A node with its neighbors, edges and source observations
+      operationId: getNode
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Node detail, or an `error` object if the id is unknown
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/NodeDetail'
+                  - $ref: '#/components/schemas/AppError'
+              examples:
+                found:
+                  value:
+                    node:
+                      id: 69
+                      key: users
+                      label: Users
+                      kind: entity
+                      summary: null
+                      weight: 512.5
+                      mentions: 210
+                      created_at: 1787552976212
+                      updated_at: 1787553009773
+                      meta: null
+                    neighbors: []
+                    edges: []
+                    observations:
+                      - snippet: "the users table has..."
+                        created_at: 1787552976212
+                        source_id: 12
+                notFound:
+                  value: { error: not found }
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /api/search:
+    get:
+      tags: [Graph]
+      summary: Full-text search over concepts
+      operationId: search
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Search query (FTS5 prefix match).
+          schema: { type: string }
+      responses:
+        '200':
+          description: Matching nodes (empty array if no query/matches)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [results]
+                properties:
+                  results:
+                    type: array
+                    items: { $ref: '#/components/schemas/Node' }
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /api/ingest:
+    post:
+      tags: [Ingest]
+      summary: Ingest a block of text (manual capture) and grow the network
+      operationId: ingest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string, description: Text to extract concepts from }
+                title: { type: string, description: Optional source title }
+            example: { text: "We decided to use Terraform for infrastructure.", title: "design note" }
+      responses:
+        '200':
+          description: Ingest result, or `error` when `text` is missing
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/IngestResult'
+                  - $ref: '#/components/schemas/AppError'
+              examples:
+                success:
+                  value:
+                    ok: true
+                    conceptsTouched: 12
+                    edges: 78
+                    decisions: 1
+                    stats: { nodes: 31695, edges: 287796, sources: 92, observations: 69390 }
+                missingText:
+                  value: { error: text required }
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /api/analyze:
+    post:
+      tags: [Analysis]
+      summary: Run pattern & decision analysis
+      operationId: analyze
+      responses:
+        '200':
+          description: Counts of patterns discovered by category
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnalyzeResult' }
+              example: { hubs: 20, clusters: 30, decisions: 50, recurring: 25 }
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /api/patterns:
+    get:
+      tags: [Analysis]
+      summary: List discovered patterns and decisions
+      operationId: getPatterns
+      responses:
+        '200':
+          description: Patterns ordered by score
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [patterns]
+                properties:
+                  patterns:
+                    type: array
+                    items: { $ref: '#/components/schemas/Pattern' }
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /api/tools:
+    get:
+      tags: [Tools]
+      summary: List registered (self-created) tools
+      operationId: getTools
+      responses:
+        '200':
+          description: All tools in the registry
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tools]
+                properties:
+                  tools:
+                    type: array
+                    items: { $ref: '#/components/schemas/Tool' }
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /api/tools/propose:
+    post:
+      tags: [Tools]
+      summary: Let the network propose new tools from its own structure
+      operationId: proposeTools
+      responses:
+        '200':
+          description: Newly proposed tools (status = proposed)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [proposed]
+                properties:
+                  proposed:
+                    type: array
+                    items: { $ref: '#/components/schemas/Tool' }
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /api/tools/{name}/{decision}:
+    post:
+      tags: [Tools]
+      summary: Approve or reject a proposed tool
+      operationId: decideTool
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+        - name: decision
+          in: path
+          required: true
+          schema: { type: string, enum: [approve, reject] }
+      responses:
+        '200':
+          description: Updated tool, or `error` for an invalid decision
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    properties:
+                      tool: { $ref: '#/components/schemas/Tool' }
+                  - $ref: '#/components/schemas/AppError'
+              examples:
+                approved:
+                  value: { tool: { name: recall_users, status: active } }
+                invalid:
+                  value: { error: decision must be approve|reject }
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /api/tools/{name}/run:
+    post:
+      tags: [Tools]
+      summary: Execute an approved/active tool's safe action
+      operationId: runTool
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              description: Optional argument overrides for the tool action.
+            example: {}
+      responses:
+        '200':
+          description: Tool result, or `error` if the tool is unknown/not approved
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    properties:
+                      result: {}
+                  - $ref: '#/components/schemas/AppError'
+              examples:
+                success:
+                  value:
+                    result:
+                      center: { id: 69, label: Users, kind: entity }
+                      nodes: []
+                      edges: 1908
+                notApproved:
+                  value: { error: 'Tool "recall_users" is not approved (status: proposed).' }
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+components:
+  responses:
+    ServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example: { statusCode: 500, error: 'Internal Server Error', message: 'Something went wrong' }
+    BadRequest:
+      description: Malformed request (e.g. invalid JSON body)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example: { statusCode: 400, error: 'Bad Request', message: 'Unexpected token in JSON' }
+    UnsupportedMediaType:
+      description: 'Request body sent without `Content-Type: application/json`'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            statusCode: 415
+            code: FST_ERR_CTP_INVALID_MEDIA_TYPE
+            error: Unsupported Media Type
+            message: 'Unsupported Media Type: application/x-www-form-urlencoded'
+    NotFound:
+      description: Route not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example: { statusCode: 404, error: 'Not Found', message: 'Route GET:/api/missing not found' }
+
+  schemas:
+    AppError:
+      type: object
+      description: Application-level error returned with HTTP 200.
+      required: [error]
+      properties:
+        error: { type: string }
+
+    ErrorResponse:
+      type: object
+      description: Fastify transport/framework error envelope.
+      required: [statusCode, error, message]
+      properties:
+        statusCode: { type: integer }
+        code: { type: string }
+        error: { type: string }
+        message: { type: string }
+
+    Stats:
+      type: object
+      required: [nodes, edges, sources, observations, embeddings]
+      properties:
+        nodes: { type: integer }
+        edges: { type: integer }
+        sources: { type: integer }
+        observations: { type: integer }
+        embeddings: { type: boolean, description: Whether on-device embeddings are enabled }
+
+    Node:
+      type: object
+      required: [id, key, label, kind, weight, mentions, created_at, updated_at]
+      properties:
+        id: { type: integer }
+        key: { type: string, description: Normalized dedupe key (lowercased label) }
+        label: { type: string }
+        kind: { type: string, enum: [concept, entity, decision, pattern, topic] }
+        summary: { type: [string, 'null'] }
+        weight: { type: number, description: Importance/activation; grows with reinforcement }
+        mentions: { type: integer }
+        created_at: { type: integer, description: Epoch ms }
+        updated_at: { type: integer, description: Epoch ms }
+        meta: { type: [object, 'null'] }
+
+    Edge:
+      type: object
+      required: [id, src, dst, kind, weight, created_at, updated_at]
+      properties:
+        id: { type: integer }
+        src: { type: integer }
+        dst: { type: integer }
+        kind: { type: string, example: related }
+        weight: { type: number }
+        created_at: { type: integer }
+        updated_at: { type: integer }
+        meta: { type: [object, 'null'] }
+
+    ViewNode:
+      type: object
+      required: [id, label, kind, weight, mentions, degree, community]
+      properties:
+        id: { type: integer }
+        label: { type: string }
+        kind: { type: string }
+        weight: { type: number }
+        mentions: { type: integer }
+        degree: { type: integer }
+        community: { type: integer, description: Louvain community id }
+
+    ViewEdge:
+      type: object
+      required: [id, source, target, kind, weight]
+      properties:
+        id: { type: integer }
+        source: { type: integer }
+        target: { type: integer }
+        kind: { type: string }
+        weight: { type: number }
+
+    Community:
+      type: object
+      required: [id, size, label]
+      properties:
+        id: { type: integer }
+        size: { type: integer }
+        label: { type: string, description: Label of the highest-weight member }
+
+    GraphView:
+      type: object
+      required: [nodes, edges, communities]
+      properties:
+        nodes: { type: array, items: { $ref: '#/components/schemas/ViewNode' } }
+        edges: { type: array, items: { $ref: '#/components/schemas/ViewEdge' } }
+        communities: { type: array, items: { $ref: '#/components/schemas/Community' } }
+
+    Observation:
+      type: object
+      required: [snippet, created_at]
+      properties:
+        snippet: { type: string }
+        created_at: { type: integer }
+        source_id: { type: [integer, 'null'] }
+
+    NodeDetail:
+      type: object
+      required: [node, neighbors, edges, observations]
+      properties:
+        node: { $ref: '#/components/schemas/Node' }
+        neighbors: { type: array, items: { $ref: '#/components/schemas/Node' } }
+        edges: { type: array, items: { $ref: '#/components/schemas/Edge' } }
+        observations: { type: array, items: { $ref: '#/components/schemas/Observation' } }
+
+    IngestResult:
+      type: object
+      required: [ok, conceptsTouched, edges, decisions, stats]
+      properties:
+        ok: { type: boolean }
+        conceptsTouched: { type: integer }
+        edges: { type: integer }
+        decisions: { type: integer }
+        stats: { $ref: '#/components/schemas/Stats' }
+
+    AnalyzeResult:
+      type: object
+      required: [hubs, clusters, decisions, recurring]
+      properties:
+        hubs: { type: integer }
+        clusters: { type: integer }
+        decisions: { type: integer }
+        recurring: { type: integer }
+
+    Pattern:
+      type: object
+      required: [id, kind, title, score]
+      properties:
+        id: { type: integer }
+        kind: { type: string, enum: [co_occurrence, hub, decision, recurring] }
+        title: { type: string }
+        description: { type: [string, 'null'] }
+        score: { type: number }
+        members: { type: string, description: JSON array of node ids }
+        created_at: { type: integer }
+
+    Tool:
+      type: object
+      required: [id, name, spec, origin, status, created_at, updated_at]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        spec:
+          type: object
+          properties:
+            action: { type: string, enum: [recall_around, search_kind, summarize_hub] }
+            params: { type: object, additionalProperties: true }
+        origin: { type: string, enum: [auto, manual] }
+        status: { type: string, enum: [proposed, approved, active, rejected] }
+        rationale: { type: [string, 'null'] }
+        created_at: { type: integer }
+        updated_at: { type: integer }

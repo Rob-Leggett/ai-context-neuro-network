@@ -1,0 +1,327 @@
+{
+  "info": {
+    "name": "Context Neuro Network API",
+    "_postman_id": "cnn-0001-0001-0001-000000000001",
+    "description": "Local-first knowledge graph API. Each request includes saved success and error response examples. Set the `baseUrl` collection variable (default http://127.0.0.1:4319).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://127.0.0.1:4319", "type": "string" },
+    { "key": "nodeId", "value": "69", "type": "string" },
+    { "key": "toolName", "value": "recall_users", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Graph",
+      "item": [
+        {
+          "name": "Get stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/stats", "host": ["{{baseUrl}}"], "path": ["api", "stats"] },
+            "description": "Network size and whether embeddings are enabled."
+          },
+          "response": [
+            {
+              "name": "200 Success",
+              "originalRequest": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/stats", "host": ["{{baseUrl}}"], "path": ["api", "stats"] } },
+              "status": "OK", "code": 200, "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json; charset=utf-8" }],
+              "body": "{\n  \"nodes\": 31683,\n  \"edges\": 287718,\n  \"sources\": 91,\n  \"observations\": 69377,\n  \"embeddings\": false\n}"
+            },
+            {
+              "name": "500 Server Error",
+              "originalRequest": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/stats", "host": ["{{baseUrl}}"], "path": ["api", "stats"] } },
+              "status": "Internal Server Error", "code": 500, "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json; charset=utf-8" }],
+              "body": "{\n  \"statusCode\": 500,\n  \"error\": \"Internal Server Error\",\n  \"message\": \"Something went wrong\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get graph view",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/graph?limit=1500",
+              "host": ["{{baseUrl}}"], "path": ["api", "graph"],
+              "query": [{ "key": "limit", "value": "1500" }]
+            },
+            "description": "Top-N nodes by weight, induced edges, and Louvain communities."
+          },
+          "response": [
+            {
+              "name": "200 Success",
+              "originalRequest": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/graph?limit=1500", "host": ["{{baseUrl}}"], "path": ["api", "graph"], "query": [{ "key": "limit", "value": "1500" }] } },
+              "status": "OK", "code": 200, "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json; charset=utf-8" }],
+              "body": "{\n  \"nodes\": [\n    { \"id\": 69, \"label\": \"Users\", \"kind\": \"entity\", \"weight\": 512.5, \"mentions\": 210, \"degree\": 1908, \"community\": 2 }\n  ],\n  \"edges\": [\n    { \"id\": 1, \"source\": 69, \"target\": 70, \"kind\": \"related\", \"weight\": 3.5 }\n  ],\n  \"communities\": [\n    { \"id\": 2, \"size\": 140, \"label\": \"CIC\" }\n  ]\n}"
+            },
+            {
+              "name": "500 Server Error",
+              "originalRequest": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/graph", "host": ["{{baseUrl}}"], "path": ["api", "graph"] } },
+              "status": "Internal Server Error", "code": 500, "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json; charset=utf-8" }],
+              "body": "{\n  \"statusCode\": 500,\n  \"error\": \"Internal Server Error\",\n  \"message\": \"Something went wrong\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get node detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/node/{{nodeId}}", "host": ["{{baseUrl}}"], "path": ["api", "node", "{{nodeId}}"] },
+            "description": "A node with neighbors, edges and source observations."
+          },
+          "response": [
+            {
+              "name": "200 Success",
+              "originalRequest": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/node/69", "host": ["{{baseUrl}}"], "path": ["api", "node", "69"] } },
+              "status": "OK", "code": 200, "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json; charset=utf-8" }],
+              "body": "{\n  \"node\": { \"id\": 69, \"key\": \"users\", \"label\": \"Users\", \"kind\": \"entity\", \"summary\": null, \"weight\": 512.5, \"mentions\": 210, \"created_at\": 1787552976212, \"updated_at\": 1787553009773, \"meta\": null },\n  \"neighbors\": [],\n  \"edges\": [],\n  \"observations\": [\n    { \"snippet\": \"the users table has...\", \"created_at\": 1787552976212, \"source_id\": 12 }\n  ]\n}"
+            },
+            {
+              "name": "200 Not Found (app error)",
+              "originalRequest": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/node/999999999", "host": ["{{baseUrl}}"], "path": ["api", "node", "999999999"] } },
+              "status": "OK", "code": 200, "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json; charset=utf-8" }],
+              "body": "{\n  \"error\": \"not found\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Search concepts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/search?q=terraform",
+              "host": ["{{baseUrl}}"], "path": ["api", "search"],
+              "query": [{ "key": "q", "value": "terraform" }]
+            },
+            "description": "Full-text (FTS5) search over concept labels/summaries."
+          },
+          "response": [
+            {
+              "name": "200 Success",
+              "originalRequest": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/search?q=terraform", "host": ["{{baseUrl}}"], "path": ["api", "search"], "query": [{ "key": "q", "value": "terraform" }] } },
+              "status": "OK", "code": 200, "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json; charset=utf-8" }],
+              "body": "{\n  \"results\": [\n    { \"id\": 1531, \"key\": \"terraform\", \"label\": \"Terraform\", \"kind\": \"entity\", \"summary\": null, \"weight\": 256.75, \"mentions\": 137, \"created_at\": 1787552976212, \"updated_at\": 1787553009773, \"meta\": null }\n  ]\n}"
+            },
+            {
+              "name": "200 Empty query",
+              "originalRequest": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/search?q=", "host": ["{{baseUrl}}"], "path": ["api", "search"], "query": [{ "key": "q", "value": "" }] } },
+              "status": "OK", "code": 200, "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json; charset=utf-8" }],
+              "body": "{\n  \"results\": []\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Ingest",
+      "item": [
+        {
+          "name": "Ingest text",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"text\": \"We decided to use Terraform for infrastructure and GitHub Actions for CI/CD.\",\n  \"title\": \"design note\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/ingest", "host": ["{{baseUrl}}"], "path": ["api", "ingest"] },
+            "description": "Extract concepts/relations/decisions from text and grow the network."
+          },
+          "response": [
+            {
+              "name": "200 Success",
+              "originalRequest": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"text\": \"We decided to use Terraform for infrastructure.\",\n  \"title\": \"design note\"\n}" }, "url": { "raw": "{{baseUrl}}/api/ingest", "host": ["{{baseUrl}}"], "path": ["api", "ingest"] } },
+              "status": "OK", "code": 200, "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json; charset=utf-8" }],
+              "body": "{\n  \"ok\": true,\n  \"conceptsTouched\": 12,\n  \"edges\": 78,\n  \"decisions\": 1,\n  \"stats\": { \"nodes\": 31695, \"edges\": 287796, \"sources\": 92, \"observations\": 69390, \"embeddings\": false }\n}"
+            },
+            {
+              "name": "200 Missing text (app error)",
+              "originalRequest": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"title\": \"no text\"\n}" }, "url": { "raw": "{{baseUrl}}/api/ingest", "host": ["{{baseUrl}}"], "path": ["api", "ingest"] } },
+              "status": "OK", "code": 200, "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json; charset=utf-8" }],
+              "body": "{\n  \"error\": \"text required\"\n}"
+            },
+            {
+              "name": "415 Unsupported Media Type",
+              "originalRequest": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/x-www-form-urlencoded" }], "body": { "mode": "raw", "raw": "text=hello" }, "url": { "raw": "{{baseUrl}}/api/ingest", "host": ["{{baseUrl}}"], "path": ["api", "ingest"] } },
+              "status": "Unsupported Media Type", "code": 415, "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json; charset=utf-8" }],
+              "body": "{\n  \"statusCode\": 415,\n  \"code\": \"FST_ERR_CTP_INVALID_MEDIA_TYPE\",\n  \"error\": \"Unsupported Media Type\",\n  \"message\": \"Unsupported Media Type: application/x-www-form-urlencoded\"\n}"
+            },
+            {
+              "name": "400 Bad Request (invalid JSON)",
+              "originalRequest": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{ not valid json" }, "url": { "raw": "{{baseUrl}}/api/ingest", "host": ["{{baseUrl}}"], "path": ["api", "ingest"] } },
+              "status": "Bad Request", "code": 400, "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json; charset=utf-8" }],
+              "body": "{\n  \"statusCode\": 400,\n  \"error\": \"Bad Request\",\n  \"message\": \"Unexpected token n in JSON\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Analysis",
+      "item": [
+        {
+          "name": "Run analyze",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/analyze", "host": ["{{baseUrl}}"], "path": ["api", "analyze"] },
+            "description": "Mine hubs, clusters, decisions and recurring themes."
+          },
+          "response": [
+            {
+              "name": "200 Success",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{baseUrl}}/api/analyze", "host": ["{{baseUrl}}"], "path": ["api", "analyze"] } },
+              "status": "OK", "code": 200, "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json; charset=utf-8" }],
+              "body": "{\n  \"hubs\": 20,\n  \"clusters\": 30,\n  \"decisions\": 50,\n  \"recurring\": 25\n}"
+            },
+            {
+              "name": "500 Server Error",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{baseUrl}}/api/analyze", "host": ["{{baseUrl}}"], "path": ["api", "analyze"] } },
+              "status": "Internal Server Error", "code": 500, "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json; charset=utf-8" }],
+              "body": "{\n  \"statusCode\": 500,\n  \"error\": \"Internal Server Error\",\n  \"message\": \"Something went wrong\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "List patterns",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/patterns", "host": ["{{baseUrl}}"], "path": ["api", "patterns"] },
+            "description": "Discovered patterns and decisions ordered by score."
+          },
+          "response": [
+            {
+              "name": "200 Success",
+              "originalRequest": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/patterns", "host": ["{{baseUrl}}"], "path": ["api", "patterns"] } },
+              "status": "OK", "code": 200, "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json; charset=utf-8" }],
+              "body": "{\n  \"patterns\": [\n    { \"id\": 1, \"kind\": \"hub\", \"title\": \"Hub: Users\", \"description\": \"Users connects 1908 concepts.\", \"score\": 1908, \"members\": \"[69]\", \"created_at\": 1787552976212 }\n  ]\n}"
+            },
+            {
+              "name": "500 Server Error",
+              "originalRequest": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/patterns", "host": ["{{baseUrl}}"], "path": ["api", "patterns"] } },
+              "status": "Internal Server Error", "code": 500, "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json; charset=utf-8" }],
+              "body": "{\n  \"statusCode\": 500,\n  \"error\": \"Internal Server Error\",\n  \"message\": \"Something went wrong\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Tools",
+      "item": [
+        {
+          "name": "List tools",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/tools", "host": ["{{baseUrl}}"], "path": ["api", "tools"] },
+            "description": "All tools in the self-updating registry."
+          },
+          "response": [
+            {
+              "name": "200 Success",
+              "originalRequest": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/api/tools", "host": ["{{baseUrl}}"], "path": ["api", "tools"] } },
+              "status": "OK", "code": 200, "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json; charset=utf-8" }],
+              "body": "{\n  \"tools\": [\n    { \"id\": 3, \"name\": \"recall_users\", \"description\": \"Recall everything the network knows around \\\"Users\\\".\", \"spec\": { \"action\": \"recall_around\", \"params\": { \"nodeId\": 69, \"depth\": 1 } }, \"origin\": \"auto\", \"status\": \"active\", \"rationale\": \"\\\"Users\\\" is a hub connecting 1908 concepts.\", \"created_at\": 1787552976212, \"updated_at\": 1787553009773 }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Propose tools",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/tools/propose", "host": ["{{baseUrl}}"], "path": ["api", "tools", "propose"] },
+            "description": "Let the network propose new tools from its own hub structure."
+          },
+          "response": [
+            {
+              "name": "200 Success",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{baseUrl}}/api/tools/propose", "host": ["{{baseUrl}}"], "path": ["api", "tools", "propose"] } },
+              "status": "OK", "code": 200, "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json; charset=utf-8" }],
+              "body": "{\n  \"proposed\": [\n    { \"id\": 3, \"name\": \"recall_users\", \"status\": \"proposed\", \"rationale\": \"\\\"Users\\\" is a hub connecting 1908 concepts.\" }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Approve / reject tool",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/tools/{{toolName}}/approve", "host": ["{{baseUrl}}"], "path": ["api", "tools", "{{toolName}}", "approve"] },
+            "description": "Path segment must be `approve` or `reject`."
+          },
+          "response": [
+            {
+              "name": "200 Approved",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{baseUrl}}/api/tools/recall_users/approve", "host": ["{{baseUrl}}"], "path": ["api", "tools", "recall_users", "approve"] } },
+              "status": "OK", "code": 200, "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json; charset=utf-8" }],
+              "body": "{\n  \"tool\": { \"id\": 3, \"name\": \"recall_users\", \"status\": \"active\" }\n}"
+            },
+            {
+              "name": "200 Invalid decision (app error)",
+              "originalRequest": { "method": "POST", "header": [], "url": { "raw": "{{baseUrl}}/api/tools/recall_users/maybe", "host": ["{{baseUrl}}"], "path": ["api", "tools", "recall_users", "maybe"] } },
+              "status": "OK", "code": 200, "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json; charset=utf-8" }],
+              "body": "{\n  \"error\": \"decision must be approve|reject\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Run tool",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{baseUrl}}/api/tools/{{toolName}}/run", "host": ["{{baseUrl}}"], "path": ["api", "tools", "{{toolName}}", "run"] },
+            "description": "Execute an approved/active tool's safe, parameterized action."
+          },
+          "response": [
+            {
+              "name": "200 Success",
+              "originalRequest": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{}" }, "url": { "raw": "{{baseUrl}}/api/tools/recall_users/run", "host": ["{{baseUrl}}"], "path": ["api", "tools", "recall_users", "run"] } },
+              "status": "OK", "code": 200, "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json; charset=utf-8" }],
+              "body": "{\n  \"result\": {\n    \"center\": { \"id\": 69, \"label\": \"Users\", \"kind\": \"entity\", \"weight\": 512.5 },\n    \"nodes\": [],\n    \"edges\": 1908\n  }\n}"
+            },
+            {
+              "name": "200 Not approved (app error)",
+              "originalRequest": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{}" }, "url": { "raw": "{{baseUrl}}/api/tools/recall_users/run", "host": ["{{baseUrl}}"], "path": ["api", "tools", "recall_users", "run"] } },
+              "status": "OK", "code": 200, "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json; charset=utf-8" }],
+              "body": "{\n  \"error\": \"Tool \\\"recall_users\\\" is not approved (status: proposed).\"\n}"
+            },
+            {
+              "name": "415 Unsupported Media Type",
+              "originalRequest": { "method": "POST", "header": [{ "key": "Content-Type", "value": "text/plain" }], "body": { "mode": "raw", "raw": "{}" }, "url": { "raw": "{{baseUrl}}/api/tools/recall_users/run", "host": ["{{baseUrl}}"], "path": ["api", "tools", "recall_users", "run"] } },
+              "status": "Unsupported Media Type", "code": 415, "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json; charset=utf-8" }],
+              "body": "{\n  \"statusCode\": 415,\n  \"code\": \"FST_ERR_CTP_INVALID_MEDIA_TYPE\",\n  \"error\": \"Unsupported Media Type\",\n  \"message\": \"Unsupported Media Type: text/plain\"\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

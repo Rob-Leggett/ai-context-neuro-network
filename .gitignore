@@ -10,3 +10,5 @@ data/
 .env
 .cache/
 models/
+.idea/
+.vscode/

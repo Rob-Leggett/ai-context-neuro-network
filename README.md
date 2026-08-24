@@ -46,6 +46,36 @@ server (`npm run web:dev` -> http://127.0.0.1:5319) side by side.
 
 ---
 
+## Seeding from ChatGPT
+
+ChatGPT has no local database, so you seed it from an official data export:
+
+1. In ChatGPT: **Settings → Data controls → Export data**.
+2. You'll get an email with a `.zip`. Unzip it — inside is **`conversations.json`**.
+3. Import it:
+
+   ```bash
+   npm run import:chatgpt -- /path/to/conversations.json
+   ```
+
+The importer linearizes each conversation's message tree and ingests every user/assistant
+turn. Re-running with a newer export is safe — concepts are de-duplicated and simply
+reinforced. For **continuous** growth (no manual exports), add the MCP server to ChatGPT
+as a connector (below) and ask it to `remember` things as you chat.
+
+---
+
+## API documentation
+
+- **OpenAPI 3.1 spec:** [`docs/openapi.yaml`](docs/openapi.yaml) — every endpoint with
+  success **and** error responses (app-level `{ error }`, plus 400/415/500 envelopes).
+  View it with any Swagger/Redoc viewer, e.g. `npx @redocly/cli preview-docs docs/openapi.yaml`.
+- **Postman collection:** [`docs/postman_collection.json`](docs/postman_collection.json) —
+  import into Postman; each request ships with saved success and error response examples.
+  Set the `baseUrl` variable (default `http://127.0.0.1:4319`).
+
+---
+
 ## Grow it live from your AI chats
 
 The network grows automatically whenever an assistant calls its MCP tools.
