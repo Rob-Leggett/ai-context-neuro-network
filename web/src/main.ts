@@ -217,8 +217,15 @@ async function openNode(id: number) {
   const n = data.node;
   const panel = $('#panel');
   panel.classList.remove('hidden');
-  const neighbors = (data.neighbors as ViewNode[]).slice(0, 40);
-  const obs = data.observations as { snippet: string }[];
+  const seen = new Set<string>();
+  const neighbors = (data.neighbors as ViewNode[])
+    .filter((x) => { const k = x.label.toLowerCase().trim(); if (!k || seen.has(k)) return false; seen.add(k); return true; })
+    .sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0))
+    .slice(0, 40);
+  const obs = (data.observations as { snippet: string }[])
+    .map((o) => cleanSnippet(o.snippet))
+    .filter((s) => s.length > 0)
+    .slice(0, 8);
   const world = worlds.find((w) => graph.hasNode(String(id)) && graph.getNodeAttribute(String(id), 'world') === w.id);
   $('#panel-body').innerHTML = `
     <h2>${escapeHtml(n.label)}</h2>
@@ -228,10 +235,21 @@ async function openNode(id: number) {
       ${neighbors.map((x) => `<span class="chip neighbor" data-id="${x.id}">${escapeHtml(x.label)}</span>`).join('') || '<span class="empty">No connections yet.</span>'}
     </div>
     <div class="section"><h3>Where it came from</h3>
-      ${obs.map((o) => `<div class="obs">${escapeHtml(o.snippet.slice(0, 220))}</div>`).join('') || '<span class="empty">No observations.</span>'}
+      ${obs.map((s) => `<div class="obs">${escapeHtml(s.slice(0, 200))}${s.length > 200 ? '…' : ''}</div>`).join('') || '<span class="empty">No observations.</span>'}
     </div>`;
   panel.querySelectorAll('.neighbor').forEach((el) => el.addEventListener('click', () => focusNode(Number((el as HTMLElement).dataset.id))));
   highlightNode(String(id));
+}
+
+// Strip markdown, emoji and bare URLs so provenance snippets read as plain prose.
+function cleanSnippet(s: string): string {
+  return (s || '')
+    .replace(/https?:\/\/\S+/g, '')
+    .replace(/[#*`_>~|]+/g, ' ')
+    .replace(/\p{Extended_Pictographic}/gu, '')
+    .replace(/-{2,}/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function highlightNode(id: string) {
