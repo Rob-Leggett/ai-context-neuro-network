@@ -347,15 +347,15 @@ export class GraphStore extends EventEmitter {
       .all(limit) as any[]).map(hydrateNode);
   }
 
-  edgesForNodes(ids: number[]): GraphEdge[] {
+  edgesForNodes(ids: number[], minWeight = 0.5): GraphEdge[] {
     if (ids.length === 0) return [];
     const placeholders = ids.map(() => '?').join(',');
     return (this.db
-      .prepare(`SELECT * FROM edges WHERE src IN (${placeholders}) AND dst IN (${placeholders})`)
-      .all(...ids, ...ids) as any[]).map(hydrateEdge);
+      .prepare(`SELECT * FROM edges WHERE src IN (${placeholders}) AND dst IN (${placeholders}) AND weight > ?`)
+      .all(...ids, ...ids, minWeight) as any[]).map(hydrateEdge);
   }
 
-  neighborhood(nodeId: number, depth = 1): { nodes: GraphNode[]; edges: GraphEdge[] } {
+  neighborhood(nodeId: number, depth = 1, minWeight = 0.5): { nodes: GraphNode[]; edges: GraphEdge[] } {
     const seen = new Set<number>([nodeId]);
     let frontier = [nodeId];
     const edges: GraphEdge[] = [];
@@ -363,8 +363,8 @@ export class GraphStore extends EventEmitter {
       if (frontier.length === 0) break;
       const placeholders = frontier.map(() => '?').join(',');
       const rows = this.db
-        .prepare(`SELECT * FROM edges WHERE src IN (${placeholders}) OR dst IN (${placeholders})`)
-        .all(...frontier, ...frontier) as any[];
+        .prepare(`SELECT * FROM edges WHERE (src IN (${placeholders}) OR dst IN (${placeholders})) AND weight > ?`)
+        .all(...frontier, ...frontier, minWeight) as any[];
       const next: number[] = [];
       for (const r of rows) {
         edges.push(hydrateEdge(r));

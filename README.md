@@ -159,7 +159,9 @@ web/                   Vite + Sigma.js WebGL front-end
 - `sources` — every imported conversation/session, optionally attributed to a `project`.
 - `nodes` — concepts/entities/decisions/patterns, with `weight` (importance) and `mentions`.
 - `edges` — typed, weighted relations (`related`, `similar`, `decided`, ...). Repeated
-  mentions reinforce weight, so frequently-discussed ideas "light up".
+  mentions reinforce weight, so frequently-discussed ideas "light up". One-off
+  co-occurrences (two concepts that shared a single message just once) are treated as
+  noise and hidden from the graph and a node's connections; only reinforced links show.
 - `observations` — every mention, linked to its `source` for provenance.
 - `node_embeddings` — optional vectors for semantic auto-linking.
 - `patterns` / `tools` — analyzer output and the self-updating tool registry.
