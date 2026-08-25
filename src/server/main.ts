@@ -82,6 +82,14 @@ export async function buildServer() {
 
   // ---- projects (toggleable groupings of imported conversations) -----------
   app.get('/api/projects', async () => ({ projects: ctx.store.listProjects() }));
+  app.post('/api/origins/:origin/:decision', async (req) => {
+    const { origin, decision } = req.params as { origin: string; decision: string };
+    if (decision !== 'enable' && decision !== 'disable') {
+      return { error: 'decision must be enable|disable' };
+    }
+    const changed = ctx.store.setOriginEnabled(origin, decision === 'enable');
+    return { origin, enabled: decision === 'enable', changed };
+  });
   app.post('/api/projects/:id/:decision', async (req) => {
     const { id, decision } = req.params as { id: string; decision: string };
     if (decision !== 'enable' && decision !== 'disable') {

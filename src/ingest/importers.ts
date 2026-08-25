@@ -58,9 +58,20 @@ export async function importChatGPT(
   // are seeded enabled so everything is imported and visible; toggle them off in
   // the UI/API afterwards. Names are placeholders — the export omits real names.
   const projectCache = new Map<string, number>();
+  let uncategorised: number | null = null;
   const resolveProject = (conv: any): number | null => {
     const ext = chatGPTProjectId(conv);
-    if (!ext) return null;
+    if (!ext) {
+      // Group untemplated conversations so the whole ChatGPT origin is toggleable.
+      if (uncategorised == null) {
+        uncategorised = ctx.store.upsertProject({
+          origin: 'chatgpt',
+          externalId: 'chatgpt:uncategorised',
+          name: 'ChatGPT (uncategorised)',
+        }).id;
+      }
+      return uncategorised;
+    }
     const cached = projectCache.get(ext);
     if (cached != null) return cached;
     const project = ctx.store.upsertProject({
@@ -145,6 +156,12 @@ export async function importCopilot(
     `SELECT user_message, assistant_response FROM turns WHERE session_id = ? ORDER BY turn_index ASC`,
   );
 
+  const copilotProject = ctx.store.upsertProject({
+    origin: 'copilot',
+    externalId: 'copilot',
+    name: 'Copilot',
+  });
+
   let conceptsTouched = 0;
   let edges = 0;
   let decisions = 0;
@@ -158,7 +175,7 @@ export async function importCopilot(
     }
     if (messages.length === 0) continue;
     const title = s.summary ?? s.repository ?? `Copilot session ${s.id.slice(0, 8)}`;
-    const res = await ctx.pipeline.ingestConversation('copilot', s.id, title, messages);
+    const res = await ctx.pipeline.ingestConversation('copilot', s.id, title, messages, copilotProject.id);
     conceptsTouched += res.conceptsTouched;
     edges += res.edges;
     decisions += res.decisions;

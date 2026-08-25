@@ -171,6 +171,20 @@ async function main() {
     },
   );
 
+  server.registerTool(
+    'toggle_source',
+    {
+      title: 'Enable/disable a whole source',
+      description:
+        'Turn every project of an origin on or off at once (e.g. all ChatGPT or all Copilot content). Disabled content stays imported but is hidden from recall, search, stats and the graph view.',
+      inputSchema: { origin: z.enum(['chatgpt', 'copilot', 'manual', 'mcp']), enabled: z.boolean() },
+    },
+    async (args) => {
+      const changed = ctx.store.setOriginEnabled(args.origin, args.enabled);
+      return ok({ origin: args.origin, enabled: args.enabled, changed });
+    },
+  );
+
   // Expose approved self-created tools dynamically.
   for (const tool of registry.list('active')) {
     server.registerTool(

@@ -105,6 +105,15 @@ export class GraphStore extends EventEmitter {
     return this.getProject(id);
   }
 
+  /** Enable or disable every project of an origin (e.g. all ChatGPT or all Copilot). */
+  setOriginEnabled(origin: string, enabled: boolean): number {
+    const info = this.db
+      .prepare(`UPDATE projects SET enabled = ?, updated_at = ? WHERE origin = ?`)
+      .run(enabled ? 1 : 0, now(), origin);
+    if (info.changes > 0) this.emit('graph', { type: 'reset' } satisfies GraphEvent);
+    return info.changes as number;
+  }
+
   /** Rename a project (the ChatGPT export does not include project names). */
   renameProject(id: number, name: string): Project | undefined {
     const info = this.db

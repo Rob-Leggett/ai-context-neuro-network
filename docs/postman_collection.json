@@ -618,6 +618,86 @@
      ]
     },
     {
+     "name": "Enable / disable source (origin)",
+     "request": {
+      "method": "POST",
+      "header": [],
+      "url": {
+       "raw": "{{baseUrl}}/api/origins/copilot/disable",
+       "host": [
+        "{{baseUrl}}"
+       ],
+       "path": [
+        "api",
+        "origins",
+        "copilot",
+        "disable"
+       ]
+      },
+      "description": "Toggle a whole source at once. `origin` is one of `chatgpt`, `copilot`, `manual`, `mcp`; the last path segment must be `enable` or `disable`. Flips every project of that origin, hiding/showing all its concepts in one action."
+     },
+     "response": [
+      {
+       "name": "200 Success",
+       "originalRequest": {
+        "method": "POST",
+        "header": [],
+        "url": {
+         "raw": "{{baseUrl}}/api/origins/copilot/disable",
+         "host": [
+          "{{baseUrl}}"
+         ],
+         "path": [
+          "api",
+          "origins",
+          "copilot",
+          "disable"
+         ]
+        }
+       },
+       "status": "OK",
+       "code": 200,
+       "_postman_previewlanguage": "json",
+       "header": [
+        {
+         "key": "Content-Type",
+         "value": "application/json; charset=utf-8"
+        }
+       ],
+       "body": "{\n  \"origin\": \"copilot\",\n  \"enabled\": false,\n  \"changed\": 1\n}"
+      },
+      {
+       "name": "200 Invalid decision",
+       "originalRequest": {
+        "method": "POST",
+        "header": [],
+        "url": {
+         "raw": "{{baseUrl}}/api/origins/copilot/maybe",
+         "host": [
+          "{{baseUrl}}"
+         ],
+         "path": [
+          "api",
+          "origins",
+          "copilot",
+          "maybe"
+         ]
+        }
+       },
+       "status": "OK",
+       "code": 200,
+       "_postman_previewlanguage": "json",
+       "header": [
+        {
+         "key": "Content-Type",
+         "value": "application/json; charset=utf-8"
+        }
+       ],
+       "body": "{\n  \"error\": \"decision must be enable|disable\"\n}"
+      }
+     ]
+    },
+    {
      "name": "Enable / disable project",
      "request": {
       "method": "POST",

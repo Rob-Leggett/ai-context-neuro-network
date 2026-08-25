@@ -223,6 +223,46 @@ paths:
         '500':
           $ref: '#/components/responses/ServerError'
 
+  /api/origins/{origin}/{decision}:
+    post:
+      tags: [Projects]
+      summary: Enable or disable every project of a source origin
+      operationId: toggleOrigin
+      description: >
+        Toggle a whole source at once — e.g. all ChatGPT content or all Copilot
+        content — by flipping every project of that origin. Disabling hides those
+        concepts from the graph, search, recall and stats without deleting anything.
+      parameters:
+        - name: origin
+          in: path
+          required: true
+          schema: { type: string, enum: [chatgpt, copilot, manual, mcp] }
+        - name: decision
+          in: path
+          required: true
+          schema: { type: string, enum: [enable, disable] }
+      responses:
+        '200':
+          description: The origin, its new enabled state, and how many projects changed
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    required: [origin, enabled, changed]
+                    properties:
+                      origin: { type: string }
+                      enabled: { type: boolean }
+                      changed: { type: integer }
+                  - $ref: '#/components/schemas/AppError'
+              examples:
+                disabled:
+                  value: { origin: copilot, enabled: false, changed: 1 }
+                invalidDecision:
+                  value: { error: 'decision must be enable|disable' }
+        '500':
+          $ref: '#/components/responses/ServerError'
+
   /api/projects/{id}/{decision}:
     post:
       tags: [Projects]

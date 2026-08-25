@@ -17,7 +17,7 @@ on your machine with a tiny footprint.
 | **See how they connect** | A WebGL graph (Sigma.js) renders the whole network; click any node to inspect its connections and where it came from. |
 | **Zoom micro ↔ macro** | Hierarchical clustering builds **worlds → regions → concepts**. Zoom out to a handful of named worlds, click one to dive into its regions, then individual concepts. |
 | **Grows from ChatGPT & Copilot** | An MCP server (`remember` / `link` / `recall`) lets both assistants write to the network *live*, **plus** importers for ChatGPT exports and the Copilot CLI session store. |
-| **Toggleable projects** | ChatGPT "projects" are imported as independent groups you can switch **on/off** — hide or reveal whole slices of history from the graph, search and stats without deleting anything. |
+| **Toggleable sources & projects** | ChatGPT "projects" and Copilot sessions are imported as independent groups you can switch **on/off** — toggle a whole source (all ChatGPT or all Copilot) or an individual project to hide or reveal slices of history from the graph, search and stats without deleting anything. |
 | **Local & low-resource** | Single Node process + one SQLite file. Optional on-device embeddings (a ~25 MB MiniLM model). No cloud, no external services. |
 | **UI navigable** | Search, focus/zoom-to-node, neighborhood expansion, live updates over WebSocket. |
 | **Updates its own tools** | The network inspects its own structure and *proposes* new MCP tools (e.g. a recall shortcut for a hub concept). You approve them; approved tools become live MCP tools. |
@@ -67,22 +67,30 @@ turn. Re-running with a newer export is safe — concepts are de-duplicated and 
 reinforced. For **continuous** growth (no manual exports), add the MCP server to ChatGPT
 as a connector (below) and ask it to `remember` things as you chat.
 
-### Projects (turn groups of chats on/off)
+### Sources & projects (turn groups of chats on/off)
 
-If you organise chats into **projects** in ChatGPT, the importer detects them (via the
-export's project id) and creates a matching project in the network. **Everything is
-imported**, and each project can be toggled **on or off** independently:
+Everything you import is grouped so you can hide or reveal whole slices of history
+without deleting anything. There are two levels:
 
-- Disabled projects stay imported but are **hidden** from the graph, search, recall and
-  stats — turn them back on anytime, nothing is lost.
-- The ChatGPT export does **not** include project names, so projects are seeded with
-  placeholder names (`Project 1`, `Project 2`, …). Rename them in the UI (**Projects**
-  button) or via the API.
+- **Source (origin)** — toggle *all* **ChatGPT** or *all* **Copilot** content at once.
+- **Project** — within ChatGPT, each ChatGPT "project" is detected (via the export's
+  project id) and becomes its own on/off group. Copilot content is grouped under a single
+  **Copilot** source; ChatGPT chats that aren't in a project fall under
+  **ChatGPT (uncategorised)**.
 
-Manage projects from the **Projects** button in the UI, the REST API
-(`GET /api/projects`, `POST /api/projects/{id}/{enable|disable}`, `PATCH /api/projects/{id}`),
-or the MCP tools (`projects`, `toggle_project`). To show only one project, disable the
-others — e.g. keep just your own project enabled and switch the rest off.
+- Disabled content stays imported but is **hidden** from the graph, search, recall and
+  stats — turn it back on anytime, nothing is lost.
+- The ChatGPT export does **not** include project names, so ChatGPT projects are seeded
+  with placeholder names (`Project 1`, `Project 2`, …). Rename them in the UI
+  (**Projects** button) or via the API.
+
+Manage everything from the **Projects** button in the UI (grouped by source, with a
+master toggle per source), the REST API (`GET /api/projects`,
+`POST /api/origins/{origin}/{enable|disable}` for a whole source,
+`POST /api/projects/{id}/{enable|disable}` for one project, `PATCH /api/projects/{id}`),
+or the MCP tools (`projects`, `toggle_project`, `toggle_source`). To show only one
+person's chats, disable the others — e.g. keep just your own project enabled and switch
+the rest off.
 
 ---
 
@@ -119,7 +127,7 @@ The network grows automatically whenever an assistant calls its MCP tools.
 **ChatGPT** — add the same server as a custom MCP connector (Developer mode / connectors).
 
 Exposed MCP tools: `remember`, `ingest_text`, `recall`, `search`, `link`, `patterns`,
-`stats`, `projects`, `toggle_project`, plus any self-created tools you approve. As you
+`stats`, `projects`, `toggle_project`, `toggle_source`, plus any self-created tools you approve. As you
 chat, ask the assistant to "remember" things — they flow straight into the graph and
 appear live in the UI.
 

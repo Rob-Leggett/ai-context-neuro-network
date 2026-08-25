@@ -379,27 +379,49 @@ async function runAnalyze() {
 }
 
 async function showProjects() {
-  const render = (projects: any[]) => `
-    <h2>Projects</h2>
-    <p class="empty">Everything is imported. Turn a project off to hide its conversations from the graph, search and stats — turn it back on anytime. Names are placeholders (the ChatGPT export omits them); click a name to rename.</p>
-    ${projects.length ? projects.map((p) => `
-      <div class="tool">
-        <label class="toggle" style="gap:8px">
-          <input type="checkbox" data-toggle="${p.id}" ${p.enabled ? 'checked' : ''} />
-          <span class="name" data-rename="${p.id}" style="cursor:text" title="Click to rename">${escapeHtml(p.name)}</span>
+  const ORIGIN_LABEL: Record<string, string> = { chatgpt: 'ChatGPT', copilot: 'Copilot', manual: 'Manual', mcp: 'MCP' };
+  const render = (projects: any[]) => {
+    const byOrigin = new Map<string, any[]>();
+    for (const p of projects) (byOrigin.get(p.origin) ?? byOrigin.set(p.origin, []).get(p.origin)!).push(p);
+    const groups = [...byOrigin.entries()].map(([origin, items]) => {
+      const allOn = items.every((p) => p.enabled);
+      const total = items.reduce((s, p) => s + (p.sources ?? 0), 0);
+      return `
+      <div class="origin-group" style="margin-top:14px">
+        <label class="toggle" style="gap:8px;font-weight:600">
+          <input type="checkbox" data-origin="${origin}" ${allOn ? 'checked' : ''} />
+          <span>${ORIGIN_LABEL[origin] ?? origin} <span class="empty">(${items.length} ${items.length === 1 ? 'group' : 'groups'} · ${total} conversations)</span></span>
         </label>
-        <div class="meta">${p.sources ?? 0} conversations · ${p.enabled ? 'enabled' : 'disabled'}</div>
-      </div>`).join('') : '<p class="empty" style="margin-top:10px">No projects imported yet. Import a ChatGPT export first.</p>'}`;
+        ${items.map((p) => `
+          <div class="tool" style="margin-left:20px">
+            <label class="toggle" style="gap:8px">
+              <input type="checkbox" data-toggle="${p.id}" ${p.enabled ? 'checked' : ''} />
+              <span class="name" data-rename="${p.id}" style="cursor:text" title="Click to rename">${escapeHtml(p.name)}</span>
+            </label>
+            <div class="meta">${p.sources ?? 0} conversations · ${p.enabled ? 'enabled' : 'disabled'}</div>
+          </div>`).join('')}
+      </div>`;
+    }).join('');
+    return `
+    <h2>Sources &amp; Projects</h2>
+    <p class="empty">Everything is imported. Toggle a whole source (ChatGPT / Copilot) or an individual project to hide its conversations from the graph, search and stats — turn it back on anytime. Click a name to rename.</p>
+    ${projects.length ? groups : '<p class="empty" style="margin-top:10px">Nothing imported yet. Import a ChatGPT export or Copilot sessions first.</p>'}`;
+  };
   const refresh = async () => {
     const { projects } = await api('/api/projects');
     showModal(render(projects));
+    const reload = async () => { await loadGraph(); await refreshStats(); refresh(); };
+    document.querySelectorAll('[data-origin]').forEach((el) => el.addEventListener('change', async () => {
+      const origin = (el as HTMLElement).dataset.origin;
+      const on = (el as HTMLInputElement).checked;
+      await api(`/api/origins/${origin}/${on ? 'enable' : 'disable'}`, { method: 'POST' });
+      await reload();
+    }));
     document.querySelectorAll('[data-toggle]').forEach((el) => el.addEventListener('change', async () => {
       const id = (el as HTMLElement).dataset.toggle;
       const on = (el as HTMLInputElement).checked;
       await api(`/api/projects/${id}/${on ? 'enable' : 'disable'}`, { method: 'POST' });
-      await loadGraph();
-      await refreshStats();
-      refresh();
+      await reload();
     }));
     document.querySelectorAll('[data-rename]').forEach((el) => el.addEventListener('click', async () => {
       const id = (el as HTMLElement).dataset.rename;
