@@ -13,7 +13,8 @@ const NOISE = new Set(
    step steps here there this that now then today yesterday tomorrow let lets sure right left
    good bad nice cool awesome perfect done working works worked file files folder folders code
    line lines error errors issue issues problem problems way ways time times day days part parts
-   thing things stuff lot lots bit little big small new old current previous`
+   thing things stuff lot lots bit little big small new old current previous
+   http https www ftp url uri href see note also thus hence eg ie etc based given`
     .split(/\s+/)
     .filter(Boolean),
 );
@@ -36,16 +37,38 @@ const DECISION_CUES = [
   /\b(?:decision|conclusion|going with|chosen approach)\s*[:\-][^.!?\n]*/gi,
 ];
 
+/**
+ * Strip high-noise, low-concept spans (URLs, emails, ARNs, bare host names)
+ * before term extraction. These otherwise shatter into meaningless fragments
+ * like "amazonaws com", "https awscom saml", "arn aws" or "jane.doe".
+ */
+function preClean(text: string): string {
+  return text
+    .replace(/https?:\/\/\S+/gi, ' ')
+    .replace(/\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+\b/g, ' ')
+    .replace(/\barn:[a-z0-9-]*:[^\s"'`]+/gi, ' ')
+    .replace(/\b(?:[a-z0-9-]+\.)+(?:com|net|org|io|dev|gov|edu|co|amazonaws|cloud)\b/gi, ' ');
+}
+
 /** Extract candidate multi-word / technical terms from a block of text. */
-function candidateTerms(text: string): Map<string, number> {
+function candidateTerms(raw: string): Map<string, number> {
+  const text = preClean(raw);
   const counts = new Map<string, number>();
   const bump = (raw: string, by = 1) => {
     const term = raw.trim().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
     if (term.length < 3 || term.length > 60) return;
+    if (/\d{5,}/.test(term)) return; // ids, dates, hashes (e.g. d-9767b75967, image 20250128)
+    if (!term.includes(' ') && /^[\p{L}\p{N}+/=_-]{20,}$/u.test(term)) return; // random long ids/tokens
     const key = term.toLowerCase();
     const words = key.split(/\s+/);
+    if (words.length > 4) return; // real concepts are short; longer = sentence fragment
     if (words.every((w) => STOPWORDS.has(w) || NOISE.has(w))) return;
     if (words.length === 1 && (STOPWORDS.has(key) || NOISE.has(key))) return;
+    // Reject mostly-filler phrases (e.g. "both of them", "one of the").
+    if (words.length >= 3) {
+      const meaningful = words.filter((w) => !STOPWORDS.has(w) && !NOISE.has(w)).length;
+      if (meaningful < Math.ceil(words.length / 2)) return;
+    }
     counts.set(term, (counts.get(term) ?? 0) + by);
   };
 
@@ -61,17 +84,47 @@ function candidateTerms(text: string): Map<string, number> {
   // 3. Technical tokens: dotted/camelCase/snake_case identifiers.
   for (const m of text.matchAll(/\b([a-z][\w]*(?:[._-][\w]+)+|[a-z]+[A-Z]\w+)\b/g)) bump(m[1], 1.2);
 
-  // 4. Frequent lowercase bigrams (domain phrases).
+  // 4. RECURRING lowercase bigrams (real domain phrases, not incidental
+  //    adjacency). We only keep a bigram if both words are substantial and the
+  //    pair recurs in this block — this kills junk like "signs via" / "via maps".
   const words = text
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .split(/\s+/)
     .filter((w) => w.length > 2 && !STOPWORDS.has(w));
+  const bigramFreq = new Map<string, number>();
   for (let i = 0; i < words.length - 1; i++) {
-    bump(`${words[i]} ${words[i + 1]}`, 0.6);
+    const a = words[i];
+    const b = words[i + 1];
+    if (a.length < 4 || b.length < 4 || NOISE.has(a) || NOISE.has(b)) continue;
+    const bg = `${a} ${b}`;
+    bigramFreq.set(bg, (bigramFreq.get(bg) ?? 0) + 1);
+  }
+  for (const [bg, c] of bigramFreq) {
+    if (c >= 2) bump(bg, 0.6 * Math.min(c, 3));
   }
 
   return counts;
+}
+
+/**
+ * Drop candidate phrases that are just a sub-span of a longer, equally-or-more
+ * prominent phrase (e.g. "aws iam" / "iam identity" inside "aws iam identity
+ * center"). This removes redundant, fragmented connections.
+ */
+function dropSubphrases(entries: [string, number][]): [string, number][] {
+  const meta = entries.map(([label, weight]) => ({
+    label,
+    weight,
+    padded: ` ${label.toLowerCase()} `,
+    n: label.split(/\s+/).length,
+  }));
+  return entries.filter(([label, weight], i) => {
+    const e = meta[i];
+    if (e.n === 1) return true;
+    const sub = ` ${label.toLowerCase()} `;
+    return !meta.some((o) => o !== e && o.n > e.n && o.padded.includes(sub) && o.weight >= weight * 0.8);
+  });
 }
 
 /**
@@ -82,8 +135,8 @@ function candidateTerms(text: string): Map<string, number> {
  */
 export function extract(text: string, maxConcepts = 12): ExtractionResult {
   const counts = candidateTerms(text);
-  const ranked = [...counts.entries()]
-    .filter(([, c]) => c >= 0.6)
+  const filtered = [...counts.entries()].filter(([, c]) => c >= 0.6);
+  const ranked = dropSubphrases(filtered)
     .sort((a, b) => b[1] - a[1])
     .slice(0, maxConcepts);
 

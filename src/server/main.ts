@@ -8,6 +8,7 @@ import { createContext } from '../context.js';
 import { openDb } from '../db/index.js';
 import { Analyzer } from '../analyze/analyzer.js';
 import { ToolRegistry } from '../tools/registry.js';
+import { isGeneric } from '../graph/generic.js';
 import { buildGraphView } from './graph-view.js';
 import type { GraphEvent } from '../graph/types.js';
 
@@ -57,7 +58,7 @@ export async function buildServer() {
     const nb = ctx.store.neighborhood(id, 1);
     return {
       node,
-      neighbors: nb.nodes.filter((n) => n.id !== id),
+      neighbors: nb.nodes.filter((n) => n.id !== id && !isGeneric(n.label)),
       edges: nb.edges,
       observations: ctx.store.observationsForNode(id, 15),
     };
