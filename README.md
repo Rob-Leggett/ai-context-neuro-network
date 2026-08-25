@@ -161,7 +161,8 @@ web/                   Vite + Sigma.js WebGL front-end
 - `edges` — typed, weighted relations (`related`, `similar`, `decided`, ...). Repeated
   mentions reinforce weight, so frequently-discussed ideas "light up". One-off
   co-occurrences (two concepts that shared a single message just once) are treated as
-  noise and hidden from the graph and a node's connections; only reinforced links show.
+  noise and excluded everywhere — the graph, a node's connections, and hub/pattern
+  analysis alike; only reinforced links count.
 - `observations` — every mention, linked to its `source` for provenance.
 - `node_embeddings` — on-device vectors used for semantic auto-linking **and** to make
   graph clustering group concepts by meaning. Backfill them for the top concepts with

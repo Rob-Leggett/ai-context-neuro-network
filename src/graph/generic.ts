@@ -13,7 +13,9 @@ export const GENERIC = new Set(
    post ensure ensures can should must will may also using used use uses new add added update updated
    remove response request result results status count index example examples version step steps
    description descriptions latest notes total note write writes click clicks select selects replace
-   replaces content contents level levels search custom summary overview details conclusion decision`
+   replaces content contents level levels search custom summary overview details conclusion decision
+   however therefore thus hence meanwhile otherwise moreover furthermore instead though although
+   whereas indeed overall basically essentially actually certainly perhaps simply given based`
     .split(/\s+/)
     .filter(Boolean),
 );
