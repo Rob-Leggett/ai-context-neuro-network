@@ -23,6 +23,8 @@ tags:
     description: Read the network and its structure
   - name: Ingest
     description: Grow the network
+  - name: Projects
+    description: Toggleable groupings of imported conversations
   - name: Analysis
     description: Patterns & decisions
   - name: Tools
@@ -178,6 +180,131 @@ paths:
                     stats: { nodes: 31695, edges: 287796, sources: 92, observations: 69390 }
                 missingText:
                   value: { error: text required }
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /api/projects:
+    get:
+      tags: [Projects]
+      summary: List imported projects and their enabled state
+      operationId: getProjects
+      description: >
+        Projects are toggleable groupings of imported conversations (e.g. ChatGPT
+        projects). Disabled projects remain imported but are hidden from the graph,
+        search, recall and stats. `sources` is the number of conversations attributed
+        to the project.
+      responses:
+        '200':
+          description: All projects, ordered by source count
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [projects]
+                properties:
+                  projects:
+                    type: array
+                    items: { $ref: '#/components/schemas/Project' }
+              example:
+                projects:
+                  - id: 1
+                    origin: chatgpt
+                    external_id: g-p-67b31ac3ade88191bc3e1b9d9060620e
+                    name: Project 1
+                    enabled: true
+                    sources: 1363
+                    created_at: 1787552976212
+                    updated_at: 1787552976212
+                    meta: null
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /api/projects/{id}/{decision}:
+    post:
+      tags: [Projects]
+      summary: Enable or disable a project
+      operationId: toggleProject
+      description: >
+        Turn a project on or off. Disabling hides all of its concepts from the graph,
+        search, recall and stats without deleting anything.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: decision
+          in: path
+          required: true
+          schema: { type: string, enum: [enable, disable] }
+      responses:
+        '200':
+          description: Updated project, or an `error` for an unknown id/decision
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    required: [project]
+                    properties:
+                      project: { $ref: '#/components/schemas/Project' }
+                  - $ref: '#/components/schemas/AppError'
+              examples:
+                disabled:
+                  value: { project: { id: 2, name: 'Project 2', enabled: false, sources: 403 } }
+                invalidDecision:
+                  value: { error: 'decision must be enable|disable' }
+                notFound:
+                  value: { error: not found }
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /api/projects/{id}:
+    patch:
+      tags: [Projects]
+      summary: Rename and/or enable a project
+      operationId: updateProject
+      description: >
+        Update a project's display name and/or enabled state. The ChatGPT export does
+        not include project names, so projects are seeded as `Project 1`, `Project 2`, …
+        and can be renamed here.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, description: New display name }
+                enabled: { type: boolean, description: Enable/disable the project }
+            example: { name: Rob, enabled: true }
+      responses:
+        '200':
+          description: Updated project, or an `error` for an unknown id
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    required: [project]
+                    properties:
+                      project: { $ref: '#/components/schemas/Project' }
+                  - $ref: '#/components/schemas/AppError'
+              examples:
+                renamed:
+                  value: { project: { id: 1, name: Rob, enabled: true, sources: 1363 } }
+                notFound:
+                  value: { error: not found }
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '400':
@@ -395,6 +522,21 @@ components:
         sources: { type: integer }
         observations: { type: integer }
         embeddings: { type: boolean, description: Whether on-device embeddings are enabled }
+
+    Project:
+      type: object
+      description: A toggleable grouping of imported conversations (e.g. a ChatGPT project).
+      required: [id, origin, name, enabled, created_at, updated_at]
+      properties:
+        id: { type: integer }
+        origin: { type: string, enum: [chatgpt, copilot, mcp, manual], description: Source system the project came from }
+        external_id: { type: [string, 'null'], description: Origin project id (e.g. ChatGPT template/gizmo id) }
+        name: { type: string, description: 'Display name (placeholder like "Project 1" until renamed).' }
+        enabled: { type: boolean, description: When false, the project is hidden from all views }
+        sources: { type: integer, description: Number of conversations/sessions attributed to the project }
+        created_at: { type: integer, description: Epoch ms }
+        updated_at: { type: integer, description: Epoch ms }
+        meta: { type: [object, 'null'] }
 
     Node:
       type: object

@@ -6,6 +6,7 @@ import { importChatGPT, importCopilot } from './importers.js';
 /**
  * CLI: import context into the neuro network.
  *   npm run import:chatgpt -- /path/to/conversations.json
+ *   npm run import:chatgpt -- /path/to/chatgpt-export-dir   (split exports)
  *   npm run import:copilot  [-- /path/to/session-store.db]
  */
 async function main() {
@@ -16,7 +17,7 @@ async function main() {
 
   if (mode === 'chatgpt') {
     if (!arg) {
-      console.error('Usage: npm run import:chatgpt -- <conversations.json>');
+      console.error('Usage: npm run import:chatgpt -- <conversations.json | export-dir>');
       process.exit(1);
     }
     console.log(`Importing ChatGPT export from ${arg} ...`);

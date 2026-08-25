@@ -30,8 +30,22 @@ export interface Source {
   kind: SourceKind;
   external_id: string | null;
   title: string | null;
+  project_id: number | null;
   created_at: number;
   meta: Record<string, unknown> | null;
+}
+
+export interface Project {
+  id: number;
+  origin: SourceKind;
+  external_id: string | null;
+  name: string;
+  enabled: boolean;
+  created_at: number;
+  updated_at: number;
+  meta: Record<string, unknown> | null;
+  /** Number of sources (conversations/sessions) attributed to this project. */
+  sources?: number;
 }
 
 export interface GraphEvent {

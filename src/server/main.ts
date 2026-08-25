@@ -79,6 +79,31 @@ export async function buildServer() {
   app.post('/api/analyze', async () => analyzer.run());
   app.get('/api/patterns', async () => ({ patterns: analyzer.list(200) }));
 
+  // ---- projects (toggleable groupings of imported conversations) -----------
+  app.get('/api/projects', async () => ({ projects: ctx.store.listProjects() }));
+  app.post('/api/projects/:id/:decision', async (req) => {
+    const { id, decision } = req.params as { id: string; decision: string };
+    if (decision !== 'enable' && decision !== 'disable') {
+      return { error: 'decision must be enable|disable' };
+    }
+    const project = ctx.store.setProjectEnabled(Number(id), decision === 'enable');
+    if (!project) return { error: 'not found' };
+    return { project };
+  });
+  app.patch('/api/projects/:id', async (req) => {
+    const id = Number((req.params as any).id);
+    const body = (req.body ?? {}) as { name?: string; enabled?: boolean };
+    let project = ctx.store.getProject(id);
+    if (!project) return { error: 'not found' };
+    if (typeof body.name === 'string' && body.name.trim()) {
+      project = ctx.store.renameProject(id, body.name.trim());
+    }
+    if (typeof body.enabled === 'boolean') {
+      project = ctx.store.setProjectEnabled(id, body.enabled);
+    }
+    return { project };
+  });
+
   // ---- self-updating tools -------------------------------------------------
   app.get('/api/tools', async () => ({ tools: registry.list() }));
   app.post('/api/tools/propose', async () => ({ proposed: registry.proposeFromPatterns() }));

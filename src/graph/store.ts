@@ -6,6 +6,7 @@ import type {
   GraphEvent,
   GraphNode,
   NodeKind,
+  Project,
   Source,
   SourceKind,
 } from './types.js';
@@ -29,6 +30,9 @@ function hydrateNode(row: any): GraphNode {
 function hydrateEdge(row: any): GraphEdge {
   return { ...row, meta: parseMeta(row.meta) } as GraphEdge;
 }
+function hydrateProject(row: any): Project {
+  return { ...row, enabled: !!row.enabled, meta: parseMeta(row.meta) } as Project;
+}
 
 /**
  * Central graph store. All writes flow through here so that live subscribers
@@ -40,26 +44,130 @@ export class GraphStore extends EventEmitter {
     this.setMaxListeners(100);
   }
 
+  // ---- projects ------------------------------------------------------------
+
+  /**
+   * Insert or fetch a project (a toggleable grouping of sources, e.g. a ChatGPT
+   * "project"). New projects are created enabled unless `enabled` is given.
+   */
+  upsertProject(input: {
+    origin: SourceKind;
+    externalId: string | null;
+    name: string;
+    enabled?: boolean;
+    meta?: object | null;
+  }): Project {
+    const ts = now();
+    const existing = this.db
+      .prepare(`SELECT * FROM projects WHERE origin = ? AND external_id IS ?`)
+      .get(input.origin, input.externalId) as any;
+    if (existing) return hydrateProject(existing);
+    const info = this.db
+      .prepare(
+        `INSERT INTO projects(origin, external_id, name, enabled, created_at, updated_at, meta)
+         VALUES (?,?,?,?,?,?,?)`,
+      )
+      .run(
+        input.origin,
+        input.externalId,
+        input.name,
+        input.enabled === false ? 0 : 1,
+        ts,
+        ts,
+        input.meta ? JSON.stringify(input.meta) : null,
+      );
+    return hydrateProject(this.db.prepare(`SELECT * FROM projects WHERE id = ?`).get(Number(info.lastInsertRowid)));
+  }
+
+  getProject(id: number): Project | undefined {
+    const row = this.db.prepare(`SELECT * FROM projects WHERE id = ?`).get(id);
+    return row ? hydrateProject(row) : undefined;
+  }
+
+  /** List every project with the number of sources attributed to it. */
+  listProjects(): Project[] {
+    const rows = this.db
+      .prepare(
+        `SELECT p.*, (SELECT COUNT(*) FROM sources s WHERE s.project_id = p.id) AS sources
+           FROM projects p ORDER BY sources DESC, p.name ASC`,
+      )
+      .all() as any[];
+    return rows.map((r) => ({ ...hydrateProject(r), sources: r.sources as number }));
+  }
+
+  /** Enable or disable a project. Disabled projects are hidden from graph views. */
+  setProjectEnabled(id: number, enabled: boolean): Project | undefined {
+    const info = this.db
+      .prepare(`UPDATE projects SET enabled = ?, updated_at = ? WHERE id = ?`)
+      .run(enabled ? 1 : 0, now(), id);
+    if (info.changes === 0) return undefined;
+    this.emit('graph', { type: 'reset' } satisfies GraphEvent);
+    return this.getProject(id);
+  }
+
+  /** Rename a project (the ChatGPT export does not include project names). */
+  renameProject(id: number, name: string): Project | undefined {
+    const info = this.db
+      .prepare(`UPDATE projects SET name = ?, updated_at = ? WHERE id = ?`)
+      .run(name, now(), id);
+    return info.changes === 0 ? undefined : this.getProject(id);
+  }
+
+  private disabledProjectIds(): number[] {
+    return (this.db.prepare(`SELECT id FROM projects WHERE enabled = 0`).all() as { id: number }[]).map(
+      (r) => r.id,
+    );
+  }
+
+  /**
+   * SQL subquery selecting node ids that are *hidden* because every observation
+   * of them comes from a disabled project. Returns null when nothing is hidden
+   * (fast path: no filtering needed). Ids are integers from the DB, safe to inline.
+   */
+  private hiddenNodeSubquery(): string | null {
+    const disabled = this.disabledProjectIds();
+    if (disabled.length === 0) return null;
+    const list = disabled.join(',');
+    return `SELECT o.node_id FROM observations o
+            LEFT JOIN sources s ON s.id = o.source_id
+            GROUP BY o.node_id
+            HAVING SUM(CASE WHEN s.project_id IS NULL OR s.project_id NOT IN (${list}) THEN 1 ELSE 0 END) = 0`;
+  }
+
   // ---- sources -------------------------------------------------------------
 
-  upsertSource(kind: SourceKind, externalId: string | null, title?: string, meta?: object): Source {
+  upsertSource(
+    kind: SourceKind,
+    externalId: string | null,
+    title?: string,
+    meta?: object,
+    projectId?: number | null,
+  ): Source {
     const ts = now();
     const existing = externalId
       ? (this.db
           .prepare(`SELECT * FROM sources WHERE kind = ? AND external_id = ?`)
           .get(kind, externalId) as any)
       : undefined;
-    if (existing) return { ...existing, meta: parseMeta(existing.meta) };
+    if (existing) {
+      // Backfill the project association on re-import of a pre-existing source.
+      if (projectId != null && existing.project_id == null) {
+        this.db.prepare(`UPDATE sources SET project_id = ? WHERE id = ?`).run(projectId, existing.id);
+        existing.project_id = projectId;
+      }
+      return { ...existing, meta: parseMeta(existing.meta) };
+    }
     const info = this.db
       .prepare(
-        `INSERT INTO sources(kind, external_id, title, created_at, meta) VALUES (?,?,?,?,?)`,
+        `INSERT INTO sources(kind, external_id, title, project_id, created_at, meta) VALUES (?,?,?,?,?,?)`,
       )
-      .run(kind, externalId, title ?? null, ts, meta ? JSON.stringify(meta) : null);
+      .run(kind, externalId, title ?? null, projectId ?? null, ts, meta ? JSON.stringify(meta) : null);
     return {
       id: Number(info.lastInsertRowid),
       kind,
       external_id: externalId,
       title: title ?? null,
+      project_id: projectId ?? null,
       created_at: ts,
       meta: (meta as Record<string, unknown>) ?? null,
     };
@@ -197,17 +305,36 @@ export class GraphStore extends EventEmitter {
 
   stats(): { nodes: number; edges: number; sources: number; observations: number } {
     const one = (sql: string) => (this.db.prepare(sql).get() as { c: number }).c;
+    const hidden = this.hiddenNodeSubquery();
+    if (!hidden) {
+      return {
+        nodes: one(`SELECT COUNT(*) c FROM nodes`),
+        edges: one(`SELECT COUNT(*) c FROM edges`),
+        sources: one(`SELECT COUNT(*) c FROM sources`),
+        observations: one(`SELECT COUNT(*) c FROM observations`),
+      };
+    }
+    const disabled = this.disabledProjectIds().join(',');
     return {
-      nodes: one(`SELECT COUNT(*) c FROM nodes`),
-      edges: one(`SELECT COUNT(*) c FROM edges`),
-      sources: one(`SELECT COUNT(*) c FROM sources`),
-      observations: one(`SELECT COUNT(*) c FROM observations`),
+      nodes: one(`SELECT COUNT(*) c FROM nodes WHERE id NOT IN (${hidden})`),
+      edges: one(
+        `SELECT COUNT(*) c FROM edges WHERE src NOT IN (${hidden}) AND dst NOT IN (${hidden})`,
+      ),
+      sources: one(
+        `SELECT COUNT(*) c FROM sources WHERE project_id IS NULL OR project_id NOT IN (${disabled})`,
+      ),
+      observations: one(
+        `SELECT COUNT(*) c FROM observations o LEFT JOIN sources s ON s.id = o.source_id
+           WHERE s.project_id IS NULL OR s.project_id NOT IN (${disabled})`,
+      ),
     };
   }
 
   topNodes(limit = 2000): GraphNode[] {
+    const hidden = this.hiddenNodeSubquery();
+    const where = hidden ? `WHERE id NOT IN (${hidden})` : '';
     return (this.db
-      .prepare(`SELECT * FROM nodes ORDER BY weight DESC LIMIT ?`)
+      .prepare(`SELECT * FROM nodes ${where} ORDER BY weight DESC LIMIT ?`)
       .all(limit) as any[]).map(hydrateNode);
   }
 
@@ -250,6 +377,7 @@ export class GraphStore extends EventEmitter {
   search(query: string, limit = 25): GraphNode[] {
     const q = query.trim();
     if (!q) return [];
+    const hidden = this.hiddenNodeSubquery();
     try {
       const match = q
         .split(/\s+/)
@@ -258,16 +386,18 @@ export class GraphStore extends EventEmitter {
         .map((t) => `${t}*`)
         .join(' ');
       if (!match) return [];
+      const filter = hidden ? `AND n.id NOT IN (${hidden})` : '';
       const rows = this.db
         .prepare(
           `SELECT n.* FROM nodes_fts f JOIN nodes n ON n.id = f.rowid
-           WHERE nodes_fts MATCH ? ORDER BY bm25(nodes_fts) LIMIT ?`,
+           WHERE nodes_fts MATCH ? ${filter} ORDER BY bm25(nodes_fts) LIMIT ?`,
         )
         .all(match, limit) as any[];
       return rows.map(hydrateNode);
     } catch {
+      const filter = hidden ? `AND id NOT IN (${hidden})` : '';
       const rows = this.db
-        .prepare(`SELECT * FROM nodes WHERE label LIKE ? ORDER BY weight DESC LIMIT ?`)
+        .prepare(`SELECT * FROM nodes WHERE label LIKE ? ${filter} ORDER BY weight DESC LIMIT ?`)
         .all(`%${q}%`, limit) as any[];
       return rows.map(hydrateNode);
     }

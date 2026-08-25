@@ -32,8 +32,9 @@ export class IngestPipeline {
     externalId: string | null,
     title: string | undefined,
     messages: IngestMessage[],
+    projectId?: number | null,
   ): Promise<{ conceptsTouched: number; edges: number; decisions: number }> {
-    const source = this.deps.store.upsertSource(origin, externalId, title);
+    const source = this.deps.store.upsertSource(origin, externalId, title, undefined, projectId);
     let conceptsTouched = 0;
     let edges = 0;
     let decisions = 0;

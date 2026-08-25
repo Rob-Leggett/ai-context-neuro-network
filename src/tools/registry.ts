@@ -1,6 +1,7 @@
 import type { DB } from '../db/index.js';
 import { now } from '../db/index.js';
 import type { GraphStore } from '../graph/store.js';
+import { isGeneric } from '../graph/generic.js';
 
 export type ToolStatus = 'proposed' | 'approved' | 'active' | 'rejected';
 
@@ -88,12 +89,14 @@ export class ToolRegistry {
         `SELECT n.id, n.label, COUNT(e.id) deg FROM nodes n
          JOIN edges e ON e.src = n.id OR e.dst = n.id
          WHERE n.kind IN ('concept','entity','topic')
-         GROUP BY n.id HAVING deg >= 6 ORDER BY deg DESC LIMIT 8`,
+         GROUP BY n.id HAVING deg >= 6 ORDER BY deg DESC LIMIT 40`,
       )
       .all() as { id: number; label: string; deg: number }[];
 
     const proposed: ToolRecord[] = [];
     for (const h of hubs) {
+      if (proposed.length >= 8) break;
+      if (isGeneric(h.label)) continue;
       const slug = h.label.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '_').replace(/^_|_$/g, '').slice(0, 40);
       if (!slug) continue;
       const name = `recall_${slug}`;

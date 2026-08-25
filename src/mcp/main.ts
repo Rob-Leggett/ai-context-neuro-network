@@ -146,6 +146,31 @@ async function main() {
     async () => ok(ctx.store.stats()),
   );
 
+  server.registerTool(
+    'projects',
+    {
+      title: 'List projects',
+      description:
+        'List imported projects (toggleable groupings of conversations) with their enabled state and source counts.',
+      inputSchema: {},
+    },
+    async () => ok({ projects: ctx.store.listProjects() }),
+  );
+
+  server.registerTool(
+    'toggle_project',
+    {
+      title: 'Enable/disable a project',
+      description:
+        'Turn a project on or off. Disabled projects stay imported but are hidden from recall, search, stats and the graph view.',
+      inputSchema: { id: z.number().int(), enabled: z.boolean() },
+    },
+    async (args) => {
+      const project = ctx.store.setProjectEnabled(args.id, args.enabled);
+      return ok(project ? { project } : { error: 'not found' });
+    },
+  );
+
   // Expose approved self-created tools dynamically.
   for (const tool of registry.list('active')) {
     server.registerTool(

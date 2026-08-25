@@ -1,25 +1,80 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import Database from 'better-sqlite3';
 import type { AppContext } from '../context.js';
 import type { IngestMessage } from './pipeline.js';
 
 /**
- * Import a ChatGPT data export (`conversations.json`). Each conversation is a
- * DAG of message nodes under `mapping`; we linearize via parent pointers.
+ * Load conversations from a ChatGPT export. Modern exports split the history
+ * across several `conversations-000.json`, `conversations-001.json`, ... files,
+ * so `filePath` may be either a single JSON file or the export directory.
+ */
+function loadChatGPTConversations(filePath: string): any[] {
+  const stat = fs.statSync(filePath);
+  const files: string[] = stat.isDirectory()
+    ? fs
+        .readdirSync(filePath)
+        .filter((f) => /^conversations.*\.json$/i.test(f))
+        .sort()
+        .map((f) => path.join(filePath, f))
+    : [filePath];
+  const all: any[] = [];
+  for (const file of files) {
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const list: any[] = Array.isArray(raw) ? raw : raw.conversations ?? [];
+    for (const c of list) all.push(c);
+  }
+  return all;
+}
+
+/** ChatGPT groups conversations into "projects" via an opaque template/gizmo id. */
+function chatGPTProjectId(conv: any): string | null {
+  return conv.conversation_template_id ?? conv.gizmo_id ?? null;
+}
+
+/**
+ * Import a ChatGPT data export. Accepts either `conversations.json`, one of the
+ * split `conversations-NNN.json` files, or the export directory. Each
+ * conversation is a DAG of message nodes under `mapping`; we linearize via
+ * timestamps. Conversations are grouped into toggleable projects.
  */
 export async function importChatGPT(
   ctx: AppContext,
   filePath: string,
   onProgress?: (done: number, total: number, title: string) => void,
-): Promise<{ conversations: number; conceptsTouched: number; edges: number; decisions: number }> {
-  const raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-  const conversations: any[] = Array.isArray(raw) ? raw : raw.conversations ?? [];
+): Promise<{
+  conversations: number;
+  projects: number;
+  conceptsTouched: number;
+  edges: number;
+  decisions: number;
+}> {
+  const conversations = loadChatGPTConversations(filePath);
   let conceptsTouched = 0;
   let edges = 0;
   let decisions = 0;
 
+  // Resolve (and lazily create) a project per external template id. New projects
+  // are seeded enabled so everything is imported and visible; toggle them off in
+  // the UI/API afterwards. Names are placeholders — the export omits real names.
+  const projectCache = new Map<string, number>();
+  const resolveProject = (conv: any): number | null => {
+    const ext = chatGPTProjectId(conv);
+    if (!ext) return null;
+    const cached = projectCache.get(ext);
+    if (cached != null) return cached;
+    const project = ctx.store.upsertProject({
+      origin: 'chatgpt',
+      externalId: ext,
+      name: `Project ${projectCache.size + 1}`,
+    });
+    projectCache.set(ext, project.id);
+    return project.id;
+  };
+
   for (let i = 0; i < conversations.length; i++) {
     const conv = conversations[i];
+    const projectId = resolveProject(conv);
     const messages = linearizeChatGPT(conv);
     if (messages.length === 0) continue;
     const res = await ctx.pipeline.ingestConversation(
@@ -27,13 +82,20 @@ export async function importChatGPT(
       String(conv.id ?? conv.conversation_id ?? conv.title ?? i),
       conv.title ?? 'ChatGPT conversation',
       messages,
+      projectId,
     );
     conceptsTouched += res.conceptsTouched;
     edges += res.edges;
     decisions += res.decisions;
     onProgress?.(i + 1, conversations.length, conv.title ?? '(untitled)');
   }
-  return { conversations: conversations.length, conceptsTouched, edges, decisions };
+  return {
+    conversations: conversations.length,
+    projects: projectCache.size,
+    conceptsTouched,
+    edges,
+    decisions,
+  };
 }
 
 function linearizeChatGPT(conv: any): IngestMessage[] {

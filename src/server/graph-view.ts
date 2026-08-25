@@ -1,6 +1,8 @@
 import Graph from 'graphology';
 import louvain from 'graphology-communities-louvain';
 import type { GraphStore } from '../graph/store.js';
+import type { GraphEdge } from '../graph/types.js';
+import { isGeneric } from '../graph/generic.js';
 
 export interface GraphViewNode {
   id: number;
@@ -61,21 +63,62 @@ export function buildGraphView(store: GraphStore, limit = 1500): GraphView {
 
   const g = new Graph({ type: 'undirected', multi: false });
   for (const n of nodes) g.addNode(String(n.id), { weight: n.weight });
+
+  // ---- sparse "backbone" for clustering ------------------------------------
+  // The raw co-occurrence graph is a hairball: generic hub concepts (e.g.
+  // "string", "Type", "Name") co-occur with everything and merge unrelated
+  // communities. We normalize each edge by its endpoints' weighted degree
+  // (association strength) to suppress hub domination, then keep only each
+  // node's few strongest links. Louvain on this backbone yields meaningful,
+  // well-separated worlds — while the returned `edges` stay the full set for rendering.
+  const edgeKey = (a: number, b: number) => (a < b ? `${a}:${b}` : `${b}:${a}`);
+  const wdeg = new Map<number, number>();
+  const bestPerPair = new Map<string, GraphEdge>();
   for (const e of edges) {
+    if (!idSet.has(e.src) || !idSet.has(e.dst) || e.src === e.dst) continue;
+    wdeg.set(e.src, (wdeg.get(e.src) ?? 0) + e.weight);
+    wdeg.set(e.dst, (wdeg.get(e.dst) ?? 0) + e.weight);
+    const k = edgeKey(e.src, e.dst);
+    const prev = bestPerPair.get(k);
+    if (!prev || e.weight > prev.weight) bestPerPair.set(k, e);
+  }
+  const strength = (e: GraphEdge) =>
+    e.weight / Math.sqrt((wdeg.get(e.src) ?? 1) * (wdeg.get(e.dst) ?? 1));
+
+  // Keep each node's K strongest normalized edges (union → symmetric backbone).
+  const K = 8;
+  const perNode = new Map<number, { k: string; s: number }[]>();
+  const push = (id: number, k: string, s: number) => {
+    const arr = perNode.get(id) ?? [];
+    arr.push({ k, s });
+    perNode.set(id, arr);
+  };
+  for (const [k, e] of bestPerPair) {
+    const s = strength(e);
+    push(e.src, k, s);
+    push(e.dst, k, s);
+  }
+  const backbone = new Set<string>();
+  for (const [, arr] of perNode) {
+    arr.sort((a, b) => b.s - a.s);
+    for (const { k } of arr.slice(0, K)) backbone.add(k);
+  }
+  for (const k of backbone) {
+    const e = bestPerPair.get(k)!;
     const s = String(e.src);
     const t = String(e.dst);
-    if (g.hasNode(s) && g.hasNode(t) && s !== t && !g.hasEdge(s, t)) {
-      g.addEdge(s, t, { weight: e.weight });
+    if (g.hasNode(s) && g.hasNode(t) && !g.hasEdge(s, t)) {
+      g.addEdge(s, t, { weight: strength(e) });
     }
   }
 
-  // Two resolutions: low = coarse "worlds", high = fine "regions".
+  // Two resolutions on the weighted backbone: low = coarse "worlds", high = fine "regions".
   let worldOf: Record<string, number> = {};
   let subOf: Record<string, number> = {};
   try {
     if (g.order > 0 && g.size > 0) {
-      worldOf = louvain(g, { resolution: 0.5 });
-      subOf = louvain(g, { resolution: 1.4 });
+      worldOf = louvain(g, { resolution: 1.0 });
+      subOf = louvain(g, { resolution: 2.2 });
     }
   } catch {
     worldOf = {};
@@ -111,8 +154,13 @@ export function buildGraphView(store: GraphStore, limit = 1500): GraphView {
     .map((e) => ({ id: e.id, source: e.src, target: e.dst, kind: e.kind, weight: e.weight }));
 
   // ---- build the worlds -> subs hierarchy with names -----------------------
-  const topLabel = (members: GraphViewNode[]) =>
-    members.slice().sort((a, b) => b.weight - a.weight)[0]?.label ?? 'cluster';
+  // Prefer the highest-weight *non-generic* member as a cluster's name so worlds
+  // read as real topics (e.g. "AWS", "Terraform") instead of "string" / "e.g".
+  const topLabel = (members: GraphViewNode[]) => {
+    const sorted = members.slice().sort((a, b) => b.weight - a.weight);
+    const named = sorted.find((m) => !isGeneric(m.label));
+    return (named ?? sorted[0])?.label ?? 'cluster';
+  };
 
   const byWorld = new Map<number, GraphViewNode[]>();
   const bySub = new Map<string, GraphViewNode[]>();

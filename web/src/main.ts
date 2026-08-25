@@ -25,7 +25,17 @@ const $ = (sel: string) => document.querySelector(sel) as HTMLElement;
 const api = async (path: string, opts: RequestInit = {}) =>
   (await fetch(path, { ...opts, headers: opts.body ? { 'content-type': 'application/json' } : {} })).json();
 
-function communityColor(c: number): string { return `hsl(${(c * 47) % 360}, 65%, 60%)`; }
+function hslToHex(h: number, s: number, l: number): string {
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => {
+    const k = (n + h / 30) % 12;
+    const c = l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+    return Math.round(255 * c).toString(16).padStart(2, '0');
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+// Hex (not hsl) so Sigma's WebGL renderer parses it — hsl() renders black there.
+function communityColor(c: number): string { return hslToHex((c * 47) % 360, 0.65, 0.6); }
 
 const graph = new Graph({ type: 'undirected', multi: false });
 let renderer: Sigma;
@@ -48,10 +58,42 @@ function addOrUpdateNode(n: ViewNode) {
 function addEdge(e: ViewEdge) {
   const s = String(e.source); const t = String(e.target);
   if (!graph.hasNode(s) || !graph.hasNode(t) || s === t || graph.hasEdge(s, t)) return;
+  // Weight intra-world links strongly and inter-world links weakly so the
+  // force layout pulls each world into its own island (matching the legend).
+  const sameWorld = graph.getNodeAttribute(s, 'world') === graph.getNodeAttribute(t, 'world');
   graph.addEdge(s, t, {
+    weight: sameWorld ? 3 : 0.04,
     size: Math.min(3, 0.3 + e.weight * 0.15),
     color: e.kind === 'similar' ? 'rgba(167,139,250,0.22)' : e.kind === 'decided' ? 'rgba(251,191,36,0.28)' : 'rgba(120,140,170,0.13)',
   });
+}
+
+// Seed positions grouped by world so each world starts as its own island.
+// forceAtlas2 then refines locally instead of collapsing everything into one blob.
+function seedLayoutByWorld() {
+  const order = new Map<number, number>();
+  worlds.forEach((w, i) => order.set(w.id, i));
+  const members = new Map<number, string[]>();
+  graph.forEachNode((id, d) => {
+    if (d.isCluster) return;
+    const w = d.world ?? 0;
+    (members.get(w) ?? members.set(w, []).get(w)!).push(id);
+  });
+  const n = Math.max(members.size, 1);
+  const ring = 500 + n * 55;
+  for (const [w, ids] of members) {
+    const i = order.get(w) ?? order.size;
+    const ang = (i / n) * Math.PI * 2;
+    const cx = Math.cos(ang) * ring;
+    const cy = Math.sin(ang) * ring;
+    const spread = 40 + Math.sqrt(ids.length) * 18;
+    ids.forEach((id, j) => {
+      const a = j * 2.399963229; // golden angle → even spiral
+      const r = spread * Math.sqrt((j + 1) / ids.length);
+      graph.setNodeAttribute(id, 'x', cx + Math.cos(a) * r);
+      graph.setNodeAttribute(id, 'y', cy + Math.sin(a) * r);
+    });
+  }
 }
 
 // ---- cluster meta-nodes (the "worlds" and "regions") -----------------------
@@ -96,8 +138,12 @@ async function loadGraph() {
   for (const n of view.nodes) addOrUpdateNode(n);
   for (const e of view.edges) addEdge(e);
   if (graph.order > 0) {
+    seedLayoutByWorld();
     const settings = forceAtlas2.inferSettings(graph);
-    forceAtlas2.assign(graph, { iterations: graph.order > 800 ? 130 : 240, settings: { ...settings, gravity: 1, scalingRatio: 14, barnesHutOptimize: true } });
+    forceAtlas2.assign(graph, {
+      iterations: graph.order > 800 ? 90 : 180,
+      settings: { ...settings, gravity: 3.5, scalingRatio: 18, edgeWeightInfluence: 1.4, barnesHutOptimize: true },
+    });
   }
   rebuildClusterNodes();
   renderLegend();
@@ -142,8 +188,8 @@ function lodReducer(_node: string, data: any) {
 }
 
 function fade(color: string, alpha: number): string {
-  const m = /^hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)$/.exec(color || '');
-  if (m) return `hsla(${m[1]},${m[2]}%,${m[3]}%,${alpha})`;
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color || '');
+  if (m) return `rgba(${parseInt(m[1], 16)},${parseInt(m[2], 16)},${parseInt(m[3], 16)},${alpha})`;
   return color;
 }
 
@@ -213,15 +259,19 @@ function focusNode(id: number) {
   const sid = String(id);
   if (!graph.hasNode(sid)) { openNode(id); return; }
   const a = graph.getNodeAttributes(sid);
-  renderer.getCamera().animate({ x: a.x, y: a.y, ratio: 0.3 }, { duration: 500 });
+  const p = renderer.getNodeDisplayData(sid) ?? { x: a.x, y: a.y };
+  renderer.getCamera().animate({ x: p.x, y: p.y, ratio: 0.3 }, { duration: 500 });
   setTimeout(() => openNode(id), 120);
 }
 
 // drill into a cluster meta-node
 function drillCluster(node: string) {
   const a = graph.getNodeAttributes(node);
+  // Camera works in normalized "framed" coordinates — use the node's display
+  // data, not its raw graph x/y (which would send the camera off-screen).
+  const p = renderer.getNodeDisplayData(node) ?? { x: a.x, y: a.y };
   const targetRatio = a.level === 'world' ? (SUB_MIN + WORLD_MIN) / 2 : SUB_MIN * 0.55;
-  renderer.getCamera().animate({ x: a.x, y: a.y, ratio: targetRatio }, { duration: 500 });
+  renderer.getCamera().animate({ x: p.x, y: p.y, ratio: targetRatio }, { duration: 500 });
 }
 
 // ---- search ----------------------------------------------------------------
@@ -271,7 +321,7 @@ function updateStats(s: any) {
   $('#stats').innerHTML = `<span><b>${s.nodes ?? 0}</b> concepts</span><span><b>${s.edges ?? 0}</b> links</span><span><b>${s.sources ?? 0}</b> sources</span>${s.embeddings === false ? '<span title="semantic embeddings off">lexical</span>' : ''}`;
 }
 function renderLegend() {
-  const top = worlds.slice(0, 7);
+  const top = worlds.slice(0, 10);
   $('#legend').innerHTML = `<div style="color:var(--text);margin-bottom:4px">Worlds (zoom in to explore)</div>` +
     top.map((w) => `<div class="item" data-world="${w.id}" style="cursor:pointer"><span class="dot" style="background:${communityColor(w.id)}"></span>${escapeHtml(w.label)} <span style="opacity:.6">(${w.size}, ${w.subs.length} regions)</span></div>`).join('') +
     `<div class="item" style="margin-top:6px;cursor:pointer" id="toggle-color">↺ color by ${colorMode === 'community' ? 'kind' : 'world'}</div>`;
@@ -308,6 +358,42 @@ async function runAnalyze() {
   } catch {
     showModal('<h2>Analysis failed</h2><p class="empty">Could not reach the server.</p>');
   }
+}
+
+async function showProjects() {
+  const render = (projects: any[]) => `
+    <h2>Projects</h2>
+    <p class="empty">Everything is imported. Turn a project off to hide its conversations from the graph, search and stats — turn it back on anytime. Names are placeholders (the ChatGPT export omits them); click a name to rename.</p>
+    ${projects.length ? projects.map((p) => `
+      <div class="tool">
+        <label class="toggle" style="gap:8px">
+          <input type="checkbox" data-toggle="${p.id}" ${p.enabled ? 'checked' : ''} />
+          <span class="name" data-rename="${p.id}" style="cursor:text" title="Click to rename">${escapeHtml(p.name)}</span>
+        </label>
+        <div class="meta">${p.sources ?? 0} conversations · ${p.enabled ? 'enabled' : 'disabled'}</div>
+      </div>`).join('') : '<p class="empty" style="margin-top:10px">No projects imported yet. Import a ChatGPT export first.</p>'}`;
+  const refresh = async () => {
+    const { projects } = await api('/api/projects');
+    showModal(render(projects));
+    document.querySelectorAll('[data-toggle]').forEach((el) => el.addEventListener('change', async () => {
+      const id = (el as HTMLElement).dataset.toggle;
+      const on = (el as HTMLInputElement).checked;
+      await api(`/api/projects/${id}/${on ? 'enable' : 'disable'}`, { method: 'POST' });
+      await loadGraph();
+      await refreshStats();
+      refresh();
+    }));
+    document.querySelectorAll('[data-rename]').forEach((el) => el.addEventListener('click', async () => {
+      const id = (el as HTMLElement).dataset.rename;
+      const current = (el as HTMLElement).textContent ?? '';
+      const name = prompt('Rename project', current);
+      if (name && name.trim() && name.trim() !== current) {
+        await api(`/api/projects/${id}`, { method: 'PATCH', body: JSON.stringify({ name: name.trim() }) });
+        refresh();
+      }
+    }));
+  };
+  refresh();
 }
 
 async function showTools() {
@@ -355,6 +441,7 @@ async function main() {
   $('#modal').addEventListener('click', (e) => { if (e.target === $('#modal')) $('#modal').classList.add('hidden'); });
   $('#btn-analyze').addEventListener('click', runAnalyze);
   $('#btn-tools').addEventListener('click', showTools);
+  $('#btn-projects').addEventListener('click', showProjects);
 
   setupSearch();
   setupLive();

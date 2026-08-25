@@ -1,9 +1,11 @@
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 /**
  * SQLite schema for the Context Neuro Network.
  *
  * Design goals: local-first, low footprint, provenance-preserving.
+ * - `projects`   : logical groupings of sources (e.g. ChatGPT "projects"), each
+ *                  independently toggleable on/off so you choose what feeds the graph
  * - `nodes`      : concepts / entities / decisions / patterns (the "neurons")
  * - `edges`      : typed, weighted relations between nodes (the "synapses")
  * - `observations`: every time a node was mentioned, with source provenance
@@ -22,15 +24,30 @@ CREATE TABLE IF NOT EXISTS meta (
   value TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS projects (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  origin      TEXT NOT NULL DEFAULT 'chatgpt', -- source system the project came from
+  external_id TEXT,                            -- e.g. ChatGPT conversation_template_id / gizmo id
+  name        TEXT NOT NULL,
+  enabled     INTEGER NOT NULL DEFAULT 1,      -- 1 = active/visible, 0 = imported but hidden
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL,
+  meta        TEXT,                            -- json
+  UNIQUE(origin, external_id)
+);
+CREATE INDEX IF NOT EXISTS idx_projects_enabled ON projects(enabled);
+
 CREATE TABLE IF NOT EXISTS sources (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   kind        TEXT NOT NULL,            -- chatgpt | copilot | mcp | manual
   external_id TEXT,                     -- conversation/session id from origin
   title       TEXT,
+  project_id  INTEGER REFERENCES projects(id) ON DELETE SET NULL, -- owning project (nullable)
   created_at  INTEGER NOT NULL,
   meta        TEXT,                     -- json
   UNIQUE(kind, external_id)
 );
+CREATE INDEX IF NOT EXISTS idx_sources_kind ON sources(kind);
 
 CREATE TABLE IF NOT EXISTS nodes (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
