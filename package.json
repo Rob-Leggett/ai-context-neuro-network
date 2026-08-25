@@ -14,12 +14,14 @@
     "import:chatgpt": "tsx src/ingest/cli.ts chatgpt",
     "import:copilot": "tsx src/ingest/cli.ts copilot",
     "analyze": "tsx src/analyze/cli.ts",
+    "embed:backfill": "tsx src/embeddings/backfill.ts",
     "web:dev": "vite --config web/vite.config.ts",
     "web:build": "vite build --config web/vite.config.ts",
     "test": "node --test --import tsx dist/**/*.test.js || node --test --import tsx \"src/**/*.test.ts\"",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@aflsolutions/graphology-communities-leiden": "^1.1.1",
     "@fastify/static": "^7.0.4",
     "@fastify/websocket": "^10.0.1",
     "@modelcontextprotocol/sdk": "^1.0.4",

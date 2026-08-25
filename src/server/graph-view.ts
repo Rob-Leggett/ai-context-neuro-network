@@ -1,8 +1,9 @@
 import Graph from 'graphology';
-import louvain from 'graphology-communities-louvain';
+import leiden from '@aflsolutions/graphology-communities-leiden';
 import type { GraphStore } from '../graph/store.js';
 import type { GraphEdge } from '../graph/types.js';
 import { isGeneric } from '../graph/generic.js';
+import { cosine } from '../embeddings/embedder.js';
 
 export interface GraphViewNode {
   id: number;
@@ -50,7 +51,14 @@ export interface GraphView {
 
 /**
  * Build a renderable, HIERARCHICAL view of the network:
- *   worlds (coarse Louvain)  ->  sub-clusters (fine Louvain)  ->  concepts
+ *   worlds (coarse Leiden)  ->  sub-clusters (fine Leiden)  ->  concepts
+ *
+ * Grouping runs the Leiden community-detection algorithm on a HYBRID backbone
+ * that blends two signals on a shared 0..1 scale:
+ *   - co-occurrence strength (how often concepts appear together, hub-normalized)
+ *   - semantic similarity (cosine between on-device embeddings, when available)
+ * so worlds reflect meaning as well as adjacency. Leiden (vs. Louvain) yields
+ * deterministic, well-connected communities with no badly-connected artifacts.
  *
  * This powers the "zoom into different worlds" experience: zoom out to see a
  * handful of named worlds, zoom in to reveal their regions, then individual
@@ -112,13 +120,45 @@ export function buildGraphView(store: GraphStore, limit = 1500): GraphView {
     }
   }
 
+  // ---- semantic backbone (embeddings) --------------------------------------
+  // Add each node's strongest semantic neighbours so concepts that mean the same
+  // thing group together even when they rarely co-occur. Cosine and co-occurrence
+  // strength both live in 0..1, so we merge by taking the max weight per pair.
+  const emb = store.embeddingsForNodes([...idSet]);
+  if (emb.size > 1) {
+    const SEM_MIN = 0.55; // ignore weak/coincidental similarity
+    const SEM_K = 6; // strongest semantic links kept per node
+    const ids = [...emb.keys()];
+    const vecs = ids.map((id) => emb.get(id)!);
+    for (let i = 0; i < ids.length; i++) {
+      const scored: { j: number; sim: number }[] = [];
+      for (let j = 0; j < ids.length; j++) {
+        if (i === j) continue;
+        const sim = cosine(vecs[i], vecs[j]);
+        if (sim >= SEM_MIN) scored.push({ j, sim });
+      }
+      scored.sort((a, b) => b.sim - a.sim);
+      for (const { j, sim } of scored.slice(0, SEM_K)) {
+        const s = String(ids[i]);
+        const t = String(ids[j]);
+        if (!g.hasNode(s) || !g.hasNode(t)) continue;
+        if (g.hasEdge(s, t)) {
+          const cur = (g.getEdgeAttribute(s, t, 'weight') as number) ?? 0;
+          if (sim > cur) g.setEdgeAttribute(s, t, 'weight', sim);
+        } else {
+          g.addEdge(s, t, { weight: sim });
+        }
+      }
+    }
+  }
+
   // Two resolutions on the weighted backbone: low = coarse "worlds", high = fine "regions".
   let worldOf: Record<string, number> = {};
   let subOf: Record<string, number> = {};
   try {
     if (g.order > 0 && g.size > 0) {
-      worldOf = louvain(g, { resolution: 1.0 });
-      subOf = louvain(g, { resolution: 2.2 });
+      worldOf = leiden(g, { resolution: 0.3 });
+      subOf = leiden(g, { resolution: 0.9 });
     }
   } catch {
     worldOf = {};

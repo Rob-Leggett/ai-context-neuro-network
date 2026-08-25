@@ -15,7 +15,7 @@ on your machine with a tiny footprint.
 |---|---|
 | **Capture connections** | Extracts concepts, entities, decisions and their relationships from every message, with full provenance back to the source conversation. |
 | **See how they connect** | A WebGL graph (Sigma.js) renders the whole network; click any node to inspect its connections and where it came from. |
-| **Zoom micro ↔ macro** | Hierarchical clustering builds **worlds → regions → concepts**. Zoom out to a handful of named worlds, click one to dive into its regions, then individual concepts. |
+| **Zoom micro ↔ macro** | **Leiden** clustering on a hybrid backbone (co-occurrence **+** on-device embedding similarity) builds **worlds → regions → concepts**, so worlds group by *meaning*, not just adjacency. Zoom out to a handful of named worlds, click one to dive into its regions, then individual concepts. |
 | **Grows from ChatGPT & Copilot** | An MCP server (`remember` / `link` / `recall`) lets both assistants write to the network *live*, **plus** importers for ChatGPT exports and the Copilot CLI session store. |
 | **Toggleable sources & projects** | ChatGPT "projects" and Copilot sessions are imported as independent groups you can switch **on/off** — toggle a whole source (all ChatGPT or all Copilot) or an individual project to hide or reveal slices of history from the graph, search and stats without deleting anything. |
 | **Local & low-resource** | Single Node process + one SQLite file. Optional on-device embeddings (a ~25 MB MiniLM model). No cloud, no external services. |
@@ -148,7 +148,7 @@ src/
     importers.ts       ChatGPT export + Copilot session-store importers
   analyze/             pattern & decision analyzer (hubs, clusters, themes)
   tools/               self-updating tool registry (safe, human-approved)
-  server/              Fastify HTTP + WebSocket API, hierarchical graph view
+  server/              Fastify HTTP + WebSocket API, hierarchical graph view (Leiden)
   mcp/                 MCP stdio server (live growth channel)
 web/                   Vite + Sigma.js WebGL front-end
 ```
@@ -163,7 +163,11 @@ web/                   Vite + Sigma.js WebGL front-end
   co-occurrences (two concepts that shared a single message just once) are treated as
   noise and hidden from the graph and a node's connections; only reinforced links show.
 - `observations` — every mention, linked to its `source` for provenance.
-- `node_embeddings` — optional vectors for semantic auto-linking.
+- `node_embeddings` — on-device vectors used for semantic auto-linking **and** to make
+  graph clustering group concepts by meaning. Backfill them for the top concepts with
+  `npm run embed:backfill` (embeds the graph's most important nodes; the MiniLM model is
+  cached locally). Full-corpus embedding at import time (`CNN_EMBEDDINGS=1`) also works
+  but is far slower on large histories.
 - `patterns` / `tools` — analyzer output and the self-updating tool registry.
 
 Everything is one file (`data/neuro.sqlite`). Delete it to reset.

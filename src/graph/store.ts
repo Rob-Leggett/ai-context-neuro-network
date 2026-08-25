@@ -277,6 +277,29 @@ export class GraphStore extends EventEmitter {
     }));
   }
 
+  /** Bulk-fetch embeddings for a set of node ids (only those that have one). */
+  embeddingsForNodes(ids: number[]): Map<number, Float32Array> {
+    const out = new Map<number, Float32Array>();
+    if (ids.length === 0) return out;
+    const CHUNK = 800;
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const slice = ids.slice(i, i + CHUNK);
+      const placeholders = slice.map(() => '?').join(',');
+      const rows = this.db
+        .prepare(`SELECT node_id, dim, vec FROM node_embeddings WHERE node_id IN (${placeholders})`)
+        .all(...slice) as { node_id: number; dim: number; vec: Buffer }[];
+      for (const r of rows) {
+        out.set(r.node_id, new Float32Array(r.vec.buffer, r.vec.byteOffset, r.dim));
+      }
+    }
+    return out;
+  }
+
+  /** How many nodes currently have a stored embedding. */
+  embeddingCount(): number {
+    return (this.db.prepare(`SELECT COUNT(*) AS c FROM node_embeddings`).get() as { c: number }).c;
+  }
+
   // ---- edges ---------------------------------------------------------------
 
   linkNodes(src: number, dst: number, kind = 'related', reinforce = 1, meta?: object): GraphEdge | null {
