@@ -374,7 +374,7 @@ function updateStats(s: any) {
   $('#stats').innerHTML = `<span><b>${s.nodes ?? 0}</b> concepts</span><span><b>${s.edges ?? 0}</b> links</span><span><b>${s.sources ?? 0}</b> sources</span>${s.embeddings === false ? '<span title="semantic embeddings off">lexical</span>' : ''}`;
 }
 function renderLegend() {
-  const top = worlds.slice(0, 10);
+  const top = worlds.slice(0, 16);
   $('#legend').innerHTML = `<div style="color:var(--text);margin-bottom:4px">Worlds (zoom in to explore)</div>` +
     top.map((w) => `<div class="item" data-world="${w.id}" style="cursor:pointer"><span class="dot" style="background:${communityColor(w.id)}"></span>${escapeHtml(w.label)} <span style="opacity:.6">(${w.size}, ${w.subs.length} regions)</span></div>`).join('') +
     `<div class="item" style="margin-top:6px;cursor:pointer" id="toggle-color">↺ color by ${colorMode === 'community' ? 'kind' : 'world'}</div>`;

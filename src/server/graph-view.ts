@@ -49,6 +49,95 @@ export interface GraphView {
   worlds: World[];
 }
 
+/** Target number of top-level "worlds" shown in the macro view. */
+const TARGET_WORLDS = 16;
+
+/**
+ * Fold a fine community partition into at most `target` "worlds". The largest
+ * communities become anchors; every smaller community is merged into the anchor
+ * it is most strongly connected to across the backbone (summed edge weight),
+ * falling back to embedding-centroid cosine, then to the largest anchor. This
+ * keeps the big coherent cores intact while removing the long tail of tiny,
+ * separately-coloured fragments that make the macro view unreadable.
+ */
+function consolidateWorlds(
+  worldOf: Record<string, number>,
+  g: Graph,
+  emb: Map<number, Float32Array>,
+  target: number,
+): Record<string, number> {
+  const members = new Map<number, string[]>();
+  for (const id of Object.keys(worldOf)) {
+    const c = worldOf[id];
+    if (!members.has(c)) members.set(c, []);
+    members.get(c)!.push(id);
+  }
+  const comms = [...members.keys()];
+  if (comms.length <= target) return worldOf;
+
+  const anchors = comms
+    .slice()
+    .sort((a, b) => members.get(b)!.length - members.get(a)!.length)
+    .slice(0, target);
+  const anchorSet = new Set(anchors);
+  const largestAnchor = anchors[0];
+
+  // Mean embedding centroid per community (for tie-breaks / disconnected fragments).
+  const centroid = new Map<number, Float32Array>();
+  for (const [c, ids] of members) {
+    let sum: Float32Array | null = null;
+    let n = 0;
+    for (const id of ids) {
+      const v = emb.get(Number(id));
+      if (!v) continue;
+      if (!sum) sum = new Float32Array(v.length);
+      for (let i = 0; i < v.length; i++) sum[i] += v[i];
+      n++;
+    }
+    if (sum && n > 0) {
+      for (let i = 0; i < sum.length; i++) sum[i] /= n;
+      centroid.set(c, sum);
+    }
+  }
+
+  const remap = new Map<number, number>();
+  for (const c of comms) if (anchorSet.has(c)) remap.set(c, c);
+
+  for (const c of comms) {
+    if (anchorSet.has(c)) continue;
+    // Merge each fragment into its best-fit anchor: semantically nearest by
+    // embedding centroid, falling back to strongest backbone connection.
+    let best: number | null = null;
+    const cv = centroid.get(c);
+    if (cv) {
+      let bestSim = -Infinity;
+      for (const a of anchors) {
+        const av = centroid.get(a);
+        if (!av) continue;
+        const sim = cosine(cv, av);
+        if (sim > bestSim) ((bestSim = sim), (best = a));
+      }
+    }
+    if (best === null) {
+      const strength = new Map<number, number>();
+      for (const node of members.get(c)!) {
+        if (!g.hasNode(node)) continue;
+        g.forEachNeighbor(node, (nb: string, attr: { weight?: number }) => {
+          const nc = worldOf[nb];
+          if (anchorSet.has(nc)) strength.set(nc, (strength.get(nc) ?? 0) + (attr.weight ?? 0));
+        });
+      }
+      let bestVal = -Infinity;
+      for (const [a, v] of strength) if (v > bestVal) ((bestVal = v), (best = a));
+    }
+    remap.set(c, best ?? largestAnchor);
+  }
+
+  const out: Record<string, number> = {};
+  for (const id of Object.keys(worldOf)) out[id] = remap.get(worldOf[id])!;
+  return out;
+}
+
 /**
  * Build a renderable, HIERARCHICAL view of the network:
  *   worlds (coarse Leiden)  ->  sub-clusters (fine Leiden)  ->  concepts
@@ -58,27 +147,33 @@ export interface GraphView {
  *   - co-occurrence strength (how often concepts appear together, hub-normalized)
  *   - semantic similarity (cosine between on-device embeddings, when available)
  * so worlds reflect meaning as well as adjacency. Leiden (vs. Louvain) yields
- * deterministic, well-connected communities with no badly-connected artifacts.
+ * well-connected communities with no badly-connected artifacts, then a
+ * consolidation pass folds the long tail of tiny fragments into the nearest of
+ * the ~16 largest worlds so the macro view stays readable.
  *
  * This powers the "zoom into different worlds" experience: zoom out to see a
  * handful of named worlds, zoom in to reveal their regions, then individual
  * concepts. Clusters are named after their highest-weight member.
  */
 export function buildGraphView(store: GraphStore, limit = 1500): GraphView {
-  const nodes = store.topNodes(limit);
+  // Generic tokens (e.g. "string", "Date", "JSON") co-occur with almost
+  // everything and carry huge weight, so they bridge unrelated worlds and, when
+  // rendered, dominate the view as giant meaningless hubs. They are already
+  // filtered from names/analysis; we drop them from the graph view entirely so
+  // worlds are shaped and rendered from meaningful concepts only.
+  const nodes = store.topNodes(limit).filter((n) => !isGeneric(n.label));
   const idSet = new Set(nodes.map((n) => n.id));
-  const edges = store.edgesForNodes([...idSet]);
+  const edges = store.edgesForNodes([...idSet]).filter((e) => idSet.has(e.src) && idSet.has(e.dst));
 
   const g = new Graph({ type: 'undirected', multi: false });
   for (const n of nodes) g.addNode(String(n.id), { weight: n.weight });
 
   // ---- sparse "backbone" for clustering ------------------------------------
-  // The raw co-occurrence graph is a hairball: generic hub concepts (e.g.
-  // "string", "Type", "Name") co-occur with everything and merge unrelated
-  // communities. We normalize each edge by its endpoints' weighted degree
-  // (association strength) to suppress hub domination, then keep only each
-  // node's few strongest links. Louvain on this backbone yields meaningful,
-  // well-separated worlds — while the returned `edges` stay the full set for rendering.
+  // The raw co-occurrence graph is a hairball. We normalize each edge by its
+  // endpoints' weighted degree (association strength) to suppress hub domination,
+  // then keep only each node's few strongest links. Community detection on this
+  // backbone yields meaningful, well-separated worlds — while the returned
+  // `edges` stay the full set for rendering.
   const edgeKey = (a: number, b: number) => (a < b ? `${a}:${b}` : `${b}:${a}`);
   const wdeg = new Map<number, number>();
   const bestPerPair = new Map<string, GraphEdge>();
@@ -164,6 +259,13 @@ export function buildGraphView(store: GraphStore, limit = 1500): GraphView {
     worldOf = {};
     subOf = {};
   }
+
+  // ---- consolidate into a readable number of "worlds" ----------------------
+  // Leiden on a graph of 1500 diverse concepts yields many small topic islands.
+  // For a legible macro view we keep the largest communities as anchor worlds and
+  // fold every smaller fragment into the anchor it connects to most strongly
+  // (backbone edge weight; embedding-centroid similarity as a tie-break/fallback).
+  worldOf = consolidateWorlds(worldOf, g, emb, TARGET_WORLDS);
 
   const degree = new Map<number, number>();
   for (const e of edges) {

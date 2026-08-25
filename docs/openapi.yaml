@@ -57,12 +57,13 @@ paths:
       summary: Hierarchical graph view (worlds -> regions -> concepts)
       operationId: getGraph
       description: >
-        Top-N nodes by weight with their induced edges, plus a two-level cluster
-        hierarchy: coarse `worlds` each containing fine-grained `subs` (regions).
-        Clusters are detected with the Leiden algorithm on a hybrid backbone that
-        blends co-occurrence strength with on-device embedding similarity, so worlds
-        group by meaning as well as adjacency. Every node carries its `world` id and
-        `sub` region key.
+        Top-N nodes by weight (excluding ultra-generic tokens) with their induced
+        edges, plus a two-level cluster hierarchy: coarse `worlds` each containing
+        fine-grained `subs` (regions). Clusters are detected with the Leiden
+        algorithm on a hybrid backbone that blends co-occurrence strength with
+        on-device embedding similarity, then a consolidation pass folds the long
+        tail of tiny fragments into the nearest of the largest worlds so the macro
+        view stays readable. Every node carries its `world` id and `sub` region key.
       parameters:
         - name: limit
           in: query
