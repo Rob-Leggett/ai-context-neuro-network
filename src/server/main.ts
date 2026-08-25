@@ -60,7 +60,7 @@ export async function buildServer() {
       node,
       neighbors: nb.nodes.filter((n) => n.id !== id && !isGeneric(n.label)),
       edges: nb.edges,
-      observations: ctx.store.observationsForNode(id, 15),
+      observations: ctx.store.observationsForNode(id, 40),
     };
   });
 

@@ -222,10 +222,7 @@ async function openNode(id: number) {
     .filter((x) => { const k = x.label.toLowerCase().trim(); if (!k || seen.has(k)) return false; seen.add(k); return true; })
     .sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0))
     .slice(0, 40);
-  const obs = (data.observations as { snippet: string }[])
-    .map((o) => cleanSnippet(o.snippet))
-    .filter((s) => s.length > 0)
-    .slice(0, 8);
+  const obs = buildProvenance(data.observations as { snippet: string }[], n.label);
   const world = worlds.find((w) => graph.hasNode(String(id)) && graph.getNodeAttribute(String(id), 'world') === w.id);
   $('#panel-body').innerHTML = `
     <h2>${escapeHtml(n.label)}</h2>
@@ -235,7 +232,7 @@ async function openNode(id: number) {
       ${neighbors.map((x) => `<span class="chip neighbor" data-id="${x.id}">${escapeHtml(x.label)}</span>`).join('') || '<span class="empty">No connections yet.</span>'}
     </div>
     <div class="section"><h3>Where it came from</h3>
-      ${obs.map((s) => `<div class="obs">${escapeHtml(s.slice(0, 200))}${s.length > 200 ? '…' : ''}</div>`).join('') || '<span class="empty">No observations.</span>'}
+      ${obs.length ? obs.map((s) => `<div class="obs">${s}</div>`).join('') : '<span class="empty">No observations.</span>'}
     </div>`;
   panel.querySelectorAll('.neighbor').forEach((el) => el.addEventListener('click', () => focusNode(Number((el as HTMLElement).dataset.id))));
   highlightNode(String(id));
@@ -250,6 +247,44 @@ function cleanSnippet(s: string): string {
     .replace(/-{2,}/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * Turn raw observation messages into readable provenance: an excerpt centered on
+ * the concept mention (so you see it in context, not the message opening),
+ * de-duplicated, with excerpts that actually mention the concept shown first.
+ */
+function buildProvenance(observations: { snippet: string }[], label: string): string[] {
+  const lc = label.toLowerCase();
+  const seen = new Set<string>();
+  const out: { html: string; hit: boolean; key: string }[] = [];
+  for (const o of observations) {
+    const s = cleanSnippet(o.snippet);
+    if (s.length < 12) continue;
+    const idx = s.toLowerCase().indexOf(lc);
+    let excerpt: string;
+    let hit = false;
+    if (idx >= 0) {
+      hit = true;
+      const start = Math.max(0, idx - 90);
+      const end = Math.min(s.length, idx + label.length + 130);
+      excerpt = (start > 0 ? '…' : '') + s.slice(start, end).trim() + (end < s.length ? '…' : '');
+    } else {
+      excerpt = s.slice(0, 200) + (s.length > 200 ? '…' : '');
+    }
+    const key = excerpt.toLowerCase().replace(/\s+/g, ' ').slice(0, 70);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    // Bold the mention so context is obvious.
+    let html = escapeHtml(excerpt);
+    if (hit) {
+      const re = new RegExp(`(${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'ig');
+      html = html.replace(re, '<b>$1</b>');
+    }
+    out.push({ html, hit, key });
+  }
+  out.sort((a, b) => Number(b.hit) - Number(a.hit));
+  return out.slice(0, 8).map((o) => o.html);
 }
 
 function highlightNode(id: string) {
