@@ -300,6 +300,65 @@ export class GraphStore extends EventEmitter {
     return (this.db.prepare(`SELECT COUNT(*) AS c FROM node_embeddings`).get() as { c: number }).c;
   }
 
+  /**
+   * Count the active sources that mention each node. Used to reduce the visual
+   * prominence of corpus-wide vocabulary without relying on a stop-word list.
+   */
+  sourceFrequencyForNodes(ids: number[]): { totalSources: number; byNode: Map<number, number> } {
+    const byNode = new Map<number, number>();
+    if (ids.length === 0) return { totalSources: 0, byNode };
+    const activeSource = `s.project_id IS NULL OR EXISTS (
+      SELECT 1 FROM projects p WHERE p.id = s.project_id AND p.enabled = 1
+    )`;
+    const totalSources = (
+      this.db.prepare(`SELECT COUNT(*) AS c FROM sources s WHERE ${activeSource}`).get() as { c: number }
+    ).c;
+    const CHUNK = 800;
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const slice = ids.slice(i, i + CHUNK);
+      const placeholders = slice.map(() => '?').join(',');
+      const rows = this.db
+        .prepare(
+          `SELECT o.node_id, COUNT(DISTINCT o.source_id) AS sources
+             FROM observations o
+             JOIN sources s ON s.id = o.source_id
+            WHERE o.node_id IN (${placeholders}) AND (${activeSource})
+            GROUP BY o.node_id`,
+        )
+        .all(...slice) as { node_id: number; sources: number }[];
+      for (const row of rows) byNode.set(row.node_id, row.sources);
+    }
+    return { totalSources, byNode };
+  }
+
+  /** Active source ids in which each node was observed. */
+  sourceIdsForNodes(ids: number[]): Map<number, number[]> {
+    const out = new Map<number, number[]>();
+    if (ids.length === 0) return out;
+    const activeSource = `s.project_id IS NULL OR EXISTS (
+      SELECT 1 FROM projects p WHERE p.id = s.project_id AND p.enabled = 1
+    )`;
+    const CHUNK = 800;
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const slice = ids.slice(i, i + CHUNK);
+      const placeholders = slice.map(() => '?').join(',');
+      const rows = this.db
+        .prepare(
+          `SELECT DISTINCT o.node_id, o.source_id
+             FROM observations o
+             JOIN sources s ON s.id = o.source_id
+            WHERE o.node_id IN (${placeholders}) AND (${activeSource})`,
+        )
+        .all(...slice) as { node_id: number; source_id: number }[];
+      for (const row of rows) {
+        const sourceIds = out.get(row.node_id) ?? [];
+        sourceIds.push(row.source_id);
+        out.set(row.node_id, sourceIds);
+      }
+    }
+    return out;
+  }
+
   // ---- edges ---------------------------------------------------------------
 
   linkNodes(src: number, dst: number, kind = 'related', reinforce = 1, meta?: object): GraphEdge | null {
@@ -442,4 +501,5 @@ export class GraphStore extends EventEmitter {
       )
       .all(nodeId, limit) as any[];
   }
+
 }

@@ -15,7 +15,7 @@ on your machine with a tiny footprint.
 |---|---|
 | **Capture connections** | Extracts concepts, entities, decisions and their relationships from every message, with full provenance back to the source conversation. |
 | **See how they connect** | A WebGL graph (Sigma.js) renders the whole network; click any node to inspect its connections and where it came from. |
-| **Zoom micro ↔ macro** | **Leiden** clustering on a hybrid backbone (co-occurrence **+** on-device embedding similarity) builds **worlds → regions → concepts**, so worlds group by *meaning*, not just adjacency. Ultra-generic tokens are excluded and the long tail of tiny fragments is folded into the nearest world, so you start on ~16 clean, named worlds. Zoom out to see them, click one to dive into its regions, then individual concepts. |
+| **Zoom micro ↔ macro** | Hierarchical **Leiden** clustering builds **worlds → regions → concepts** from co-occurrence, on-device semantic similarity and shared source context. A preliminary partition automatically suppresses diffuse bridge concepts, then communities are clustered into a data-determined number of worlds—no fixed world count or hard-coded exclusion words. Zoom out to see them, click one to dive into its regions, then individual concepts. |
 | **Grows from ChatGPT & Copilot** | An MCP server (`remember` / `link` / `recall`) lets both assistants write to the network *live*, **plus** importers for ChatGPT exports and the Copilot CLI session store. |
 | **Toggleable sources & projects** | ChatGPT "projects" and Copilot sessions are imported as independent groups you can switch **on/off** — toggle a whole source (all ChatGPT or all Copilot) or an individual project to hide or reveal slices of history from the graph, search and stats without deleting anything. |
 | **Local & low-resource** | Single Node process + one SQLite file. Optional on-device embeddings (a ~25 MB MiniLM model). No cloud, no external services. |
@@ -140,7 +140,7 @@ src/
   config.ts            configuration & paths
   db/                  SQLite schema + connection (WAL, FTS5)
   graph/               GraphStore — nodes/edges/observations, live event bus
-  graph/generic.ts     shared filter that drops filler tokens from worlds/analysis/tools
+  graph/generic.ts     shared lexical guard for analysis/tool recommendations
   embeddings/          on-device MiniLM embeddings + cosine similarity
   ingest/
     extract.ts         local concept/relation/decision extraction (no LLM needed)
@@ -169,6 +169,10 @@ web/                   Vite + Sigma.js WebGL front-end
   `npm run embed:backfill` (embeds the graph's most important nodes; the MiniLM model is
   cached locally). Full-corpus embedding at import time (`CNN_EMBEDDINGS=1`) also works
   but is far slower on large histories.
+- Graph worlds are inferred from the currently enabled data. Community participation
+  automatically downweights concepts whose links are spread across many subjects;
+  source-distribution similarity and normalized embedding centroids then determine
+  which regions belong together. The result is deterministic for the same active data.
 - `patterns` / `tools` — analyzer output and the self-updating tool registry.
 
 Everything is one file (`data/neuro.sqlite`). Delete it to reset.

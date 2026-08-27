@@ -6,21 +6,23 @@ import { createContext } from '../context.js';
  * Grouping (worlds/regions) is computed on the graph's top-N nodes, so we only
  * need vectors for those — embedding all ~75k nodes is unnecessary and the
  * import-time O(N^2) similarity linking does not scale. This targeted backfill
- * embeds each node's label once (idempotent — skips nodes already embedded) and
- * is fast because the MiniLM model is cached locally.
+ * embeds each node's label and optional summary. Existing vectors are skipped
+ * unless `--refresh` is supplied.
  *
- * Usage: tsx src/embeddings/backfill.ts [limit]   (default 6000)
+ * Usage: tsx src/embeddings/backfill.ts [limit] [--refresh]   (default 6000)
  */
 async function main(): Promise<void> {
-  const limit = Number(process.argv[2] || 6000);
+  const refresh = process.argv.includes('--refresh');
+  const limitArg = process.argv.slice(2).find((arg) => /^\d+$/.test(arg));
+  const limit = Number(limitArg || 6000);
   // Force embeddings on regardless of CNN_EMBEDDINGS so the embedder loads.
   const ctx = createContext({ embeddings: true });
   const { store, embedder } = ctx;
 
   const nodes = store.topNodes(limit);
-  const todo = nodes.filter((n) => !store.getEmbedding(n.id));
+  const todo = refresh ? nodes : nodes.filter((n) => !store.getEmbedding(n.id));
   console.log(
-    `[backfill] ${nodes.length} top nodes; ${nodes.length - todo.length} already embedded; ` +
+    `[backfill] ${nodes.length} top nodes; ${refresh ? 'refreshing all; ' : `${nodes.length - todo.length} already embedded; `}` +
       `embedding ${todo.length}…`,
   );
 

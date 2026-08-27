@@ -57,13 +57,15 @@ paths:
       summary: Hierarchical graph view (worlds -> regions -> concepts)
       operationId: getGraph
       description: >
-        Top-N nodes by weight (excluding ultra-generic tokens) with their induced
-        edges, plus a two-level cluster hierarchy: coarse `worlds` each containing
-        fine-grained `subs` (regions). Clusters are detected with the Leiden
-        algorithm on a hybrid backbone that blends co-occurrence strength with
-        on-device embedding similarity, then a consolidation pass folds the long
-        tail of tiny fragments into the nearest of the largest worlds so the macro
-        view stays readable. Every node carries its `world` id and `sub` region key.
+        Top-N nodes by weight with their induced edges, plus a two-level cluster
+        hierarchy: coarse `worlds` each containing fine-grained `subs` (regions).
+        Hierarchical Leiden clustering blends normalized co-occurrence, on-device
+        embedding similarity and shared source context. A preliminary partition
+        measures community participation and automatically suppresses diffuse bridge
+        concepts before a community-level graph discovers the number of worlds from
+        the active data. No fixed world count or hard-coded word exclusion is used.
+        Every node carries its `world` id, `sub` region key and graph-relative
+        `salience`. Assignments are deterministic for the same enabled data.
       parameters:
         - name: limit
           in: query
@@ -612,12 +614,13 @@ components:
 
     ViewNode:
       type: object
-      required: [id, label, kind, weight, mentions, degree, community, world, sub]
+      required: [id, label, kind, weight, salience, mentions, degree, community, world, sub]
       properties:
         id: { type: integer }
         label: { type: string }
         kind: { type: string }
         weight: { type: number }
+        salience: { type: number, description: 'Graph-relative display importance after automatic bridge suppression.' }
         mentions: { type: integer }
         degree: { type: integer }
         community: { type: integer, description: 'Deprecated alias of `world` (kept for compatibility).' }
@@ -641,7 +644,7 @@ components:
       properties:
         id: { type: integer }
         size: { type: integer }
-        label: { type: string, description: Label of the highest-weight member }
+        label: { type: string, description: Data-derived representative label }
 
     SubCluster:
       type: object
@@ -649,7 +652,7 @@ components:
       required: [key, label, size]
       properties:
         key: { type: string, description: 'Region key, formatted `world:sub`.' }
-        label: { type: string, description: Label of the region's highest-weight member }
+        label: { type: string, description: Representative label built from central, distinctive members }
         size: { type: integer }
 
     World:
@@ -658,7 +661,7 @@ components:
       required: [id, label, size, subs]
       properties:
         id: { type: integer }
-        label: { type: string, description: Label of the world's highest-weight member }
+        label: { type: string, description: Representative label of the world's strongest region }
         size: { type: integer, description: Number of member concepts }
         subs:
           type: array

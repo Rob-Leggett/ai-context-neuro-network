@@ -2,7 +2,6 @@ import Graph from 'graphology';
 import leiden from '@aflsolutions/graphology-communities-leiden';
 import type { GraphStore } from '../graph/store.js';
 import type { GraphEdge } from '../graph/types.js';
-import { isGeneric } from '../graph/generic.js';
 import { cosine } from '../embeddings/embedder.js';
 
 export interface GraphViewNode {
@@ -10,6 +9,8 @@ export interface GraphViewNode {
   label: string;
   kind: string;
   weight: number;
+  /** graph-relative importance after automatically suppressing diffuse bridge nodes */
+  salience: number;
   mentions: number;
   degree: number;
   /** flat community (kept for backwards compatibility; equals `world`) */
@@ -49,92 +50,163 @@ export interface GraphView {
   worlds: World[];
 }
 
-/** Target number of top-level "worlds" shown in the macro view. */
-const TARGET_WORLDS = 16;
+function seededRandom(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state += 0x6d2b79f5;
+    let value = state;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function centroidsForCommunities(
+  communityOf: Record<string, number>,
+  emb: Map<number, Float32Array>,
+): Map<number, Float32Array> {
+  const sums = new Map<number, { vec: Float32Array; count: number }>();
+  for (const [id, community] of Object.entries(communityOf)) {
+    const vec = emb.get(Number(id));
+    if (!vec) continue;
+    let sum = sums.get(community);
+    if (!sum) {
+      sum = { vec: new Float32Array(vec.length), count: 0 };
+      sums.set(community, sum);
+    }
+    for (let i = 0; i < vec.length; i++) sum.vec[i] += vec[i];
+    sum.count++;
+  }
+  const out = new Map<number, Float32Array>();
+  for (const [community, sum] of sums) {
+    for (let i = 0; i < sum.vec.length; i++) sum.vec[i] /= sum.count;
+    let norm = 0;
+    for (let i = 0; i < sum.vec.length; i++) norm += sum.vec[i] * sum.vec[i];
+    norm = Math.sqrt(norm);
+    if (norm > 0) {
+      for (let i = 0; i < sum.vec.length; i++) sum.vec[i] /= norm;
+    }
+    out.set(community, sum.vec);
+  }
+  return out;
+}
+
+function nodeCommunityConcentration(g: Graph, communityOf: Record<string, number>): Map<string, number> {
+  const concentration = new Map<string, number>();
+  g.forEachNode((node) => {
+    const byCommunity = new Map<number, number>();
+    let total = 0;
+    g.forEachNeighbor(node, (neighbor, attr) => {
+      const weight = (attr.weight as number) ?? 0;
+      const community = communityOf[neighbor];
+      byCommunity.set(community, (byCommunity.get(community) ?? 0) + weight);
+      total += weight;
+    });
+    let value = 0;
+    if (total > 0) {
+      for (const weight of byCommunity.values()) value += (weight / total) ** 2;
+    }
+    concentration.set(node, value || 1);
+  });
+  return concentration;
+}
+
+function suppressBridgeNodes(g: Graph, communityOf: Record<string, number>): Graph {
+  const concentration = nodeCommunityConcentration(g, communityOf);
+  const refined = new Graph({ type: 'undirected', multi: false });
+  g.forEachNode((node, attr) => refined.addNode(node, attr));
+  g.forEachEdge((_edge, attr, source, target) => {
+    const focus = Math.sqrt((concentration.get(source) ?? 1) * (concentration.get(target) ?? 1));
+    refined.addEdge(source, target, { ...attr, weight: ((attr.weight as number) ?? 0) * focus });
+  });
+  return refined;
+}
 
 /**
- * Fold a fine community partition into at most `target` "worlds". The largest
- * communities become anchors; every smaller community is merged into the anchor
- * it is most strongly connected to across the backbone (summed edge weight),
- * falling back to embedding-centroid cosine, then to the largest anchor. This
- * keeps the big coherent cores intact while removing the long tail of tiny,
- * separately-coloured fragments that make the macro view unreadable.
+ * Build a graph whose nodes are Leiden communities, then cluster that graph
+ * again. Cross-community backbone edges preserve observed relationships while
+ * centroid-neighbour edges connect semantically compatible islands. The number
+ * of worlds emerges from this meta-graph rather than a fixed target or a list
+ * of words to exclude.
  */
-function consolidateWorlds(
-  worldOf: Record<string, number>,
+function discoverWorlds(
+  communityOf: Record<string, number>,
   g: Graph,
   emb: Map<number, Float32Array>,
-  target: number,
+  sourcesByNode: Map<number, number[]>,
 ): Record<string, number> {
-  const members = new Map<number, string[]>();
-  for (const id of Object.keys(worldOf)) {
-    const c = worldOf[id];
-    if (!members.has(c)) members.set(c, []);
-    members.get(c)!.push(id);
-  }
-  const comms = [...members.keys()];
-  if (comms.length <= target) return worldOf;
+  const communities = [...new Set(Object.values(communityOf))];
+  if (communities.length < 2) return communityOf;
 
-  const anchors = comms
-    .slice()
-    .sort((a, b) => members.get(b)!.length - members.get(a)!.length)
-    .slice(0, target);
-  const anchorSet = new Set(anchors);
-  const largestAnchor = anchors[0];
+  const meta = new Graph({ type: 'undirected', multi: false });
+  for (const community of communities) meta.addNode(String(community));
 
-  // Mean embedding centroid per community (for tie-breaks / disconnected fragments).
-  const centroid = new Map<number, Float32Array>();
-  for (const [c, ids] of members) {
-    let sum: Float32Array | null = null;
-    let n = 0;
-    for (const id of ids) {
-      const v = emb.get(Number(id));
-      if (!v) continue;
-      if (!sum) sum = new Float32Array(v.length);
-      for (let i = 0; i < v.length; i++) sum[i] += v[i];
-      n++;
+  const sourceProfiles = new Map<number, Map<number, number>>();
+  for (const [id, community] of Object.entries(communityOf)) {
+    let profile = sourceProfiles.get(community);
+    if (!profile) {
+      profile = new Map();
+      sourceProfiles.set(community, profile);
     }
-    if (sum && n > 0) {
-      for (let i = 0; i < sum.length; i++) sum[i] /= n;
-      centroid.set(c, sum);
+    for (const sourceId of sourcesByNode.get(Number(id)) ?? []) {
+      profile.set(sourceId, (profile.get(sourceId) ?? 0) + 1);
     }
   }
 
-  const remap = new Map<number, number>();
-  for (const c of comms) if (anchorSet.has(c)) remap.set(c, c);
-
-  for (const c of comms) {
-    if (anchorSet.has(c)) continue;
-    // Merge each fragment into its best-fit anchor: semantically nearest by
-    // embedding centroid, falling back to strongest backbone connection.
-    let best: number | null = null;
-    const cv = centroid.get(c);
-    if (cv) {
-      let bestSim = -Infinity;
-      for (const a of anchors) {
-        const av = centroid.get(a);
-        if (!av) continue;
-        const sim = cosine(cv, av);
-        if (sim > bestSim) ((bestSim = sim), (best = a));
-      }
+  const centroids = centroidsForCommunities(communityOf, emb);
+  const semanticNeighbors = Math.max(2, Math.ceil(Math.log2(communities.length) / 2));
+  const sparseCosine = (a: Map<number, number>, b: Map<number, number>): number => {
+    let dot = 0;
+    let aa = 0;
+    let bb = 0;
+    for (const value of a.values()) aa += value * value;
+    for (const value of b.values()) bb += value * value;
+    const smaller = a.size <= b.size ? a : b;
+    const larger = smaller === a ? b : a;
+    for (const [key, value] of smaller) dot += value * (larger.get(key) ?? 0);
+    return aa > 0 && bb > 0 ? dot / Math.sqrt(aa * bb) : 0;
+  };
+  for (const community of communities) {
+    const vec = centroids.get(community);
+    const similarities = communities
+      .filter((other) => other !== community)
+      .map((other) => {
+        const semantic = vec && centroids.has(other) ? Math.max(0, cosine(vec, centroids.get(other)!)) : 0;
+        const contextual = sparseCosine(
+          sourceProfiles.get(community) ?? new Map(),
+          sourceProfiles.get(other) ?? new Map(),
+        );
+        const similarity = 0.3 * semantic + 0.7 * contextual;
+        return { other, similarity: semantic >= 0.8 ? Math.max(similarity, semantic * 0.8) : similarity };
+      })
+      .sort((a, b) => b.similarity - a.similarity);
+    const mean = similarities.reduce((sum, item) => sum + item.similarity, 0) / Math.max(1, similarities.length);
+    const variance = similarities.reduce((sum, item) => sum + (item.similarity - mean) ** 2, 0)
+      / Math.max(1, similarities.length);
+    const threshold = mean + Math.sqrt(variance) * 0.5;
+    const nearest = similarities
+      .filter((item) => item.similarity >= threshold)
+      .slice(0, semanticNeighbors);
+    for (const { other, similarity } of nearest) {
+      const a = String(community);
+      const b = String(other);
+      const weight = Math.max(0.01, similarity);
+      if (meta.hasEdge(a, b)) meta.setEdgeAttribute(a, b, 'weight', Math.max(weight, meta.getEdgeAttribute(a, b, 'weight')));
+      else meta.addEdge(a, b, { weight });
     }
-    if (best === null) {
-      const strength = new Map<number, number>();
-      for (const node of members.get(c)!) {
-        if (!g.hasNode(node)) continue;
-        g.forEachNeighbor(node, (nb: string, attr: { weight?: number }) => {
-          const nc = worldOf[nb];
-          if (anchorSet.has(nc)) strength.set(nc, (strength.get(nc) ?? 0) + (attr.weight ?? 0));
-        });
-      }
-      let bestVal = -Infinity;
-      for (const [a, v] of strength) if (v > bestVal) ((bestVal = v), (best = a));
-    }
-    remap.set(c, best ?? largestAnchor);
   }
+
+  if (meta.size === 0) return communityOf;
+  const metaWorld = leiden(meta, {
+    resolution: 2.5,
+    rng: seededRandom(0x4e455552),
+    maxIterations: 20,
+  });
 
   const out: Record<string, number> = {};
-  for (const id of Object.keys(worldOf)) out[id] = remap.get(worldOf[id])!;
+  for (const [id, community] of Object.entries(communityOf)) {
+    out[id] = metaWorld[String(community)] ?? community;
+  }
   return out;
 }
 
@@ -148,20 +220,15 @@ function consolidateWorlds(
  *   - semantic similarity (cosine between on-device embeddings, when available)
  * so worlds reflect meaning as well as adjacency. Leiden (vs. Louvain) yields
  * well-connected communities with no badly-connected artifacts, then a
- * consolidation pass folds the long tail of tiny fragments into the nearest of
- * the ~16 largest worlds so the macro view stays readable.
+ * second Leiden pass clusters the discovered communities themselves, allowing
+ * the number and composition of worlds to emerge from the active dataset.
  *
  * This powers the "zoom into different worlds" experience: zoom out to see a
  * handful of named worlds, zoom in to reveal their regions, then individual
- * concepts. Clusters are named after their highest-weight member.
+ * concepts. Clusters are named from their most central, distinctive members.
  */
 export function buildGraphView(store: GraphStore, limit = 1500): GraphView {
-  // Generic tokens (e.g. "string", "Date", "JSON") co-occur with almost
-  // everything and carry huge weight, so they bridge unrelated worlds and, when
-  // rendered, dominate the view as giant meaningless hubs. They are already
-  // filtered from names/analysis; we drop them from the graph view entirely so
-  // worlds are shaped and rendered from meaningful concepts only.
-  const nodes = store.topNodes(limit).filter((n) => !isGeneric(n.label));
+  const nodes = store.topNodes(limit);
   const idSet = new Set(nodes.map((n) => n.id));
   const edges = store.edgesForNodes([...idSet]).filter((e) => idSet.has(e.src) && idSet.has(e.dst));
 
@@ -220,6 +287,8 @@ export function buildGraphView(store: GraphStore, limit = 1500): GraphView {
   // thing group together even when they rarely co-occur. Cosine and co-occurrence
   // strength both live in 0..1, so we merge by taking the max weight per pair.
   const emb = store.embeddingsForNodes([...idSet]);
+  const sourceFrequency = store.sourceFrequencyForNodes([...idSet]);
+  const sourcesByNode = store.sourceIdsForNodes([...idSet]);
   if (emb.size > 1) {
     const SEM_MIN = 0.55; // ignore weak/coincidental similarity
     const SEM_K = 6; // strongest semantic links kept per node
@@ -252,20 +321,28 @@ export function buildGraphView(store: GraphStore, limit = 1500): GraphView {
   let subOf: Record<string, number> = {};
   try {
     if (g.order > 0 && g.size > 0) {
-      worldOf = leiden(g, { resolution: 0.3 });
-      subOf = leiden(g, { resolution: 0.9 });
+      const communities = leiden(g, {
+        resolution: 0.55,
+        rng: seededRandom(0x434f4d4d),
+        maxIterations: 20,
+      });
+      const refined = suppressBridgeNodes(g, communities);
+      const refinedCommunities = leiden(refined, {
+        resolution: 0.55,
+        rng: seededRandom(0x52454649),
+        maxIterations: 20,
+      });
+      worldOf = discoverWorlds(refinedCommunities, refined, emb, sourcesByNode);
+      subOf = leiden(refined, {
+        resolution: 1.1,
+        rng: seededRandom(0x53554253),
+        maxIterations: 20,
+      });
     }
   } catch {
     worldOf = {};
     subOf = {};
   }
-
-  // ---- consolidate into a readable number of "worlds" ----------------------
-  // Leiden on a graph of 1500 diverse concepts yields many small topic islands.
-  // For a legible macro view we keep the largest communities as anchor worlds and
-  // fold every smaller fragment into the anchor it connects to most strongly
-  // (backbone edge weight; embedding-centroid similarity as a tie-break/fallback).
-  worldOf = consolidateWorlds(worldOf, g, emb, TARGET_WORLDS);
 
   const degree = new Map<number, number>();
   for (const e of edges) {
@@ -273,9 +350,34 @@ export function buildGraphView(store: GraphStore, limit = 1500): GraphView {
     degree.set(e.dst, (degree.get(e.dst) ?? 0) + 1);
   }
 
+  const internalStrength = new Map<number, number>();
+  const totalStrength = new Map<number, number>();
+  g.forEachEdge((_edge, attr, source, target) => {
+    const weight = (attr.weight as number) ?? 0;
+    const a = Number(source);
+    const b = Number(target);
+    totalStrength.set(a, (totalStrength.get(a) ?? 0) + weight);
+    totalStrength.set(b, (totalStrength.get(b) ?? 0) + weight);
+    if (worldOf[source] === worldOf[target]) {
+      internalStrength.set(a, (internalStrength.get(a) ?? 0) + weight);
+      internalStrength.set(b, (internalStrength.get(b) ?? 0) + weight);
+    }
+  });
+
   const viewNodes: GraphViewNode[] = nodes.map((n) => {
     const world = worldOf[String(n.id)] ?? 0;
     const subRaw = subOf[String(n.id)] ?? 0;
+    const specificity = (internalStrength.get(n.id) ?? 0) / Math.max(totalStrength.get(n.id) ?? 0, 0.001);
+    const sourceCount = sourceFrequency.byNode.get(n.id) ?? 0;
+    const corpusSpecificity = sourceFrequency.totalSources > 1
+      ? Math.log((sourceFrequency.totalSources + 1) / (sourceCount + 1))
+        / Math.log(sourceFrequency.totalSources + 1)
+      : 1;
+    const recurrence = Math.log1p(n.mentions / Math.max(1, sourceCount));
+    const salience = Math.log1p(n.weight)
+      * (0.2 + 0.8 * specificity)
+      * (0.4 + 0.6 * corpusSpecificity)
+      * (0.7 + 0.3 * recurrence);
     // Nest sub within world so each sub-cluster belongs to exactly one world.
     const sub = `${world}:${subRaw}`;
     return {
@@ -283,6 +385,7 @@ export function buildGraphView(store: GraphStore, limit = 1500): GraphView {
       label: n.label,
       kind: n.kind,
       weight: n.weight,
+      salience,
       mentions: n.mentions,
       degree: degree.get(n.id) ?? 0,
       community: world,
@@ -296,12 +399,62 @@ export function buildGraphView(store: GraphStore, limit = 1500): GraphView {
     .map((e) => ({ id: e.id, source: e.src, target: e.dst, kind: e.kind, weight: e.weight }));
 
   // ---- build the worlds -> subs hierarchy with names -----------------------
-  // Prefer the highest-weight *non-generic* member as a cluster's name so worlds
-  // read as real topics (e.g. "AWS", "Terraform") instead of "string" / "e.g".
-  const topLabel = (members: GraphViewNode[]) => {
-    const sorted = members.slice().sort((a, b) => b.weight - a.weight);
-    const named = sorted.find((m) => !isGeneric(m.label));
-    return (named ?? sorted[0])?.label ?? 'cluster';
+  const labelGroup = (members: GraphViewNode[]): { label: string; score: number } => {
+    let centroid: Float32Array | null = null;
+    let embedded = 0;
+    for (const member of members) {
+      const vec = emb.get(member.id);
+      if (!vec) continue;
+      if (!centroid) centroid = new Float32Array(vec.length);
+      for (let i = 0; i < vec.length; i++) centroid[i] += vec[i];
+      embedded++;
+    }
+    if (centroid && embedded > 0) {
+      let norm = 0;
+      for (let i = 0; i < centroid.length; i++) {
+        centroid[i] /= embedded;
+        norm += centroid[i] * centroid[i];
+      }
+      norm = Math.sqrt(norm);
+      if (norm > 0) for (let i = 0; i < centroid.length; i++) centroid[i] /= norm;
+    }
+    const ranked = members
+      .map((member) => {
+        const semantic = centroid && emb.has(member.id) ? Math.max(0, cosine(centroid, emb.get(member.id)!)) : 0;
+        const structural = (internalStrength.get(member.id) ?? 0)
+          / Math.max(totalStrength.get(member.id) ?? 0, 0.001);
+        const sourceCount = sourceFrequency.byNode.get(member.id) ?? 0;
+        const corpusSpecificity = sourceFrequency.totalSources > 1
+          ? Math.log((sourceFrequency.totalSources + 1) / (sourceCount + 1))
+            / Math.log(sourceFrequency.totalSources + 1)
+          : 1;
+        const focus = namingFocus.get(String(member.id)) ?? 1;
+        const kindWeight = member.kind === 'entity' ? 1.25 : member.kind === 'topic' ? 1.15 : 1;
+        return {
+          member,
+          score: Math.sqrt(member.weight)
+            * (0.25 + 0.75 * structural)
+            * (0.7 + 0.3 * semantic)
+            * (0.6 + 0.4 * corpusSpecificity)
+            * (0.15 + 0.85 * focus)
+            * kindWeight,
+        };
+      })
+      .sort((a, b) => b.score - a.score);
+    const labels: string[] = [];
+    for (const { member } of ranked) {
+      if (labels.some((label) => {
+        const a = label.toLowerCase();
+        const b = member.label.toLowerCase();
+        return a.includes(b) || b.includes(a);
+      })) continue;
+      labels.push(member.label);
+      if (labels.length === 3) break;
+    }
+    return {
+      label: labels.join('/') || 'cluster',
+      score: ranked[0]?.score ?? 0,
+    };
   };
 
   const byWorld = new Map<number, GraphViewNode[]>();
@@ -312,17 +465,21 @@ export function buildGraphView(store: GraphStore, limit = 1500): GraphView {
     if (!bySub.has(n.sub)) bySub.set(n.sub, []);
     bySub.get(n.sub)!.push(n);
   }
+  const namingFocus = nodeCommunityConcentration(g, subOf);
 
   const worlds: World[] = [...byWorld.entries()]
     .map(([id, members]) => {
       const subKeys = [...new Set(members.map((m) => m.sub))];
-      const subs: SubCluster[] = subKeys
+      const rankedSubs = subKeys
         .map((key) => {
           const subMembers = bySub.get(key)!;
-          return { key, label: topLabel(subMembers), size: subMembers.length };
+          const summary = labelGroup(subMembers);
+          return { key, label: summary.label, size: subMembers.length, score: summary.score };
         })
         .sort((a, b) => b.size - a.size);
-      return { id, label: topLabel(members), size: members.length, subs };
+      const subs: SubCluster[] = rankedSubs.map(({ key, label, size }) => ({ key, label, size }));
+      const representative = rankedSubs.slice().sort((a, b) => b.score - a.score)[0];
+      return { id, label: representative?.label ?? labelGroup(members).label, size: members.length, subs };
     })
     .sort((a, b) => b.size - a.size);
 

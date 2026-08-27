@@ -4,7 +4,7 @@ import forceAtlas2 from 'graphology-layout-forceatlas2';
 
 // ---- types (mirror server graph-view) --------------------------------------
 interface ViewNode {
-  id: number; label: string; kind: string; weight: number; mentions: number;
+  id: number; label: string; kind: string; weight: number; salience?: number; mentions: number;
   degree: number; community: number; world: number; sub: string;
 }
 interface ViewEdge { id: number; source: number; target: number; kind: string; weight: number; }
@@ -42,8 +42,9 @@ let renderer: Sigma;
 let colorMode: 'community' | 'kind' = 'community';
 let worlds: World[] = [];
 
-function nodeSize(n: { weight: number; degree: number }): number {
-  return Math.min(20, 3 + Math.sqrt(n.weight) * 1.2 + Math.sqrt(n.degree) * 0.7);
+function nodeSize(n: { weight: number; salience?: number; degree: number }): number {
+  const importance = n.salience ?? Math.log1p(n.weight);
+  return Math.min(20, 3 + Math.sqrt(importance) * 2.4 + Math.sqrt(n.degree) * 0.35);
 }
 
 function addOrUpdateNode(n: ViewNode) {
@@ -366,7 +367,7 @@ function setupLive() {
 }
 let pulseTimer: any;
 function pulse() { clearTimeout(pulseTimer); pulseTimer = setTimeout(() => renderer.refresh(), 250); refreshStats(); }
-function toViewNode(n: any): ViewNode { return { id: n.id, label: n.label, kind: n.kind, weight: n.weight, mentions: n.mentions, degree: graph.hasNode(String(n.id)) ? graph.degree(String(n.id)) : 0, community: 0, world: 0, sub: '0:0' }; }
+function toViewNode(n: any): ViewNode { return { id: n.id, label: n.label, kind: n.kind, weight: n.weight, salience: n.salience, mentions: n.mentions, degree: graph.hasNode(String(n.id)) ? graph.degree(String(n.id)) : 0, community: 0, world: 0, sub: '0:0' }; }
 
 // ---- stats / legend --------------------------------------------------------
 async function refreshStats() { updateStats(await api('/api/stats')); }
@@ -374,7 +375,7 @@ function updateStats(s: any) {
   $('#stats').innerHTML = `<span><b>${s.nodes ?? 0}</b> concepts</span><span><b>${s.edges ?? 0}</b> links</span><span><b>${s.sources ?? 0}</b> sources</span>${s.embeddings === false ? '<span title="semantic embeddings off">lexical</span>' : ''}`;
 }
 function renderLegend() {
-  const top = worlds.slice(0, 16);
+  const top = worlds;
   $('#legend').innerHTML = `<div style="color:var(--text);margin-bottom:4px">Worlds (zoom in to explore)</div>` +
     top.map((w) => `<div class="item" data-world="${w.id}" style="cursor:pointer"><span class="dot" style="background:${communityColor(w.id)}"></span>${escapeHtml(w.label)} <span style="opacity:.6">(${w.size}, ${w.subs.length} regions)</span></div>`).join('') +
     `<div class="item" style="margin-top:6px;cursor:pointer" id="toggle-color">↺ color by ${colorMode === 'community' ? 'kind' : 'world'}</div>`;
