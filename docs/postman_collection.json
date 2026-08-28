@@ -160,7 +160,7 @@
          "value": "application/json; charset=utf-8"
         }
        ],
-       "body": "{\n  \"nodes\": [\n    { \"id\": 69, \"label\": \"Users\", \"kind\": \"entity\", \"weight\": 512.5, \"salience\": 4.8, \"mentions\": 210, \"degree\": 1908, \"community\": 2, \"world\": 2, \"sub\": \"2:0\" }\n  ],\n  \"edges\": [\n    { \"id\": 1, \"source\": 69, \"target\": 70, \"kind\": \"related\", \"weight\": 3.5 }\n  ],\n  \"communities\": [\n    { \"id\": 2, \"size\": 140, \"label\": \"Auth\" }\n  ],\n  \"worlds\": [\n    { \"id\": 2, \"label\": \"Auth\", \"size\": 299, \"subs\": [ { \"key\": \"2:0\", \"label\": \"Auth/Identity/Users\", \"size\": 140 }, { \"key\": \"2:1\", \"label\": \"API/Access/Token\", \"size\": 63 } ] }\n  ]\n}"
+       "body": "{\n  \"nodes\": [\n    { \"id\": 69, \"label\": \"Users\", \"kind\": \"entity\", \"weight\": 512.5, \"salience\": 4.8, \"mentions\": 210, \"degree\": 1908, \"community\": 2, \"world\": 2, \"sub\": \"2:0\" }\n  ],\n  \"edges\": [\n    { \"id\": 1, \"source\": 69, \"target\": 70, \"kind\": \"related\", \"weight\": 3.5 }\n  ],\n  \"communities\": [\n           { \"id\": 2, \"size\": 140, \"label\": \"Authentication\" }\n  ],\n  \"worlds\": [\n    { \"id\": 2, \"label\": \"Authentication\", \"size\": 299, \"subs\": [ { \"key\": \"2:0\", \"label\": \"Auth/Identity/Users\", \"size\": 140 }, { \"key\": \"2:1\", \"label\": \"API/Access/Token\", \"size\": 63 } ] }\n  ]\n}"
       },
       {
        "name": "500 Server Error",

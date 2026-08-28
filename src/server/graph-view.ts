@@ -50,6 +50,39 @@ export interface GraphView {
   worlds: World[];
 }
 
+const WORLD_CATEGORIES = [
+  'People',
+  'Relationships',
+  'Health',
+  'Education',
+  'Finance',
+  'Banking',
+  'Cloud',
+  'Infrastructure',
+  'Networking',
+  'Security',
+  'Identity',
+  'Authentication',
+  'Development',
+  'Software',
+  'Frontend',
+  'Data',
+  'Databases',
+  'Testing',
+  'DevOps',
+  'Operations',
+  'Automation',
+  'Configuration',
+  'Documentation',
+  'CRM',
+  'Legal',
+  'Communication',
+  'Geography',
+  'Time',
+  'Projects',
+  'Design',
+] as const;
+
 function seededRandom(seed: number): () => number {
   let state = seed >>> 0;
   return () => {
@@ -466,8 +499,63 @@ export function buildGraphView(store: GraphStore, limit = 1500): GraphView {
     bySub.get(n.sub)!.push(n);
   }
   const namingFocus = nodeCommunityConcentration(g, subOf);
+  const categoryCandidates = WORLD_CATEGORIES.flatMap((label) => {
+    const node = store.getNodeByKey(label.toLowerCase());
+    if (!node) return [];
+    const vector = store.getEmbedding(node.id);
+    return vector ? [{ label, id: node.id, vector }] : [];
+  });
+  const categoryEdges = store.edgesTouchingNodes(categoryCandidates.map((candidate) => candidate.id));
+  const categoryIds = new Set(categoryCandidates.map((candidate) => candidate.id));
+  const categoryStrength = new Map<number, number>();
+  for (const edge of categoryEdges) {
+    if (categoryIds.has(edge.src)) {
+      categoryStrength.set(edge.src, (categoryStrength.get(edge.src) ?? 0) + edge.weight);
+    }
+    if (categoryIds.has(edge.dst)) {
+      categoryStrength.set(edge.dst, (categoryStrength.get(edge.dst) ?? 0) + edge.weight);
+    }
+  }
 
-  const worlds: World[] = [...byWorld.entries()]
+  const worldCategoryScores = (members: GraphViewNode[]): { label: string; score: number }[] => {
+    let centroid: Float32Array | null = null;
+    let count = 0;
+    for (const member of members) {
+      const vector = emb.get(member.id);
+      if (!vector) continue;
+      if (!centroid) centroid = new Float32Array(vector.length);
+      for (let i = 0; i < vector.length; i++) centroid[i] += vector[i];
+      count++;
+    }
+    if (!centroid || count === 0 || categoryCandidates.length === 0) {
+      return [];
+    }
+    let norm = 0;
+    for (let i = 0; i < centroid.length; i++) {
+      centroid[i] /= count;
+      norm += centroid[i] * centroid[i];
+    }
+    norm = Math.sqrt(norm);
+    if (norm > 0) for (let i = 0; i < centroid.length; i++) centroid[i] /= norm;
+
+    const memberIds = new Set(members.map((member) => member.id));
+    return categoryCandidates
+      .map((candidate) => {
+        let direct = 0;
+        for (const edge of categoryEdges) {
+          if (edge.src === candidate.id && memberIds.has(edge.dst)) direct += edge.weight;
+          else if (edge.dst === candidate.id && memberIds.has(edge.src)) direct += edge.weight;
+        }
+        return {
+          label: candidate.label,
+          score: cosine(centroid!, candidate.vector)
+            + 0.8 * direct / Math.max(categoryStrength.get(candidate.id) ?? direct, 1),
+        };
+      })
+      .sort((a, b) => b.score - a.score);
+  };
+
+  const worldDrafts = [...byWorld.entries()]
     .map(([id, members]) => {
       const subKeys = [...new Set(members.map((m) => m.sub))];
       const rankedSubs = subKeys
@@ -478,9 +566,22 @@ export function buildGraphView(store: GraphStore, limit = 1500): GraphView {
         })
         .sort((a, b) => b.size - a.size);
       const subs: SubCluster[] = rankedSubs.map(({ key, label, size }) => ({ key, label, size }));
-      return { id, label: labelGroup(members).label.split('/')[0], size: members.length, subs };
+        return {
+          id,
+          fallbackLabel: labelGroup(members).label.split('/')[0],
+          size: members.length,
+          subs,
+          categories: worldCategoryScores(members),
+        };
     })
     .sort((a, b) => b.size - a.size);
+
+  const worlds: World[] = worldDrafts.map((world) => ({
+    id: world.id,
+    label: world.categories[0]?.label ?? world.fallbackLabel,
+    size: world.size,
+    subs: world.subs,
+  }));
 
   const communities = worlds.map((w) => ({ id: w.id, size: w.size, label: w.label }));
 

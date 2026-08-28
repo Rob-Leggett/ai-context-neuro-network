@@ -437,6 +437,28 @@ export class GraphStore extends EventEmitter {
       .all(...ids, ...ids, minWeight) as any[]).map(hydrateEdge);
   }
 
+  /** Fetch reinforced edges touching any of the supplied nodes. */
+  edgesTouchingNodes(ids: number[], minWeight = 0.5): GraphEdge[] {
+    if (ids.length === 0) return [];
+    const out = new Map<number, GraphEdge>();
+    const CHUNK = 400;
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const slice = ids.slice(i, i + CHUNK);
+      const placeholders = slice.map(() => '?').join(',');
+      const rows = this.db
+        .prepare(
+          `SELECT * FROM edges
+            WHERE (src IN (${placeholders}) OR dst IN (${placeholders})) AND weight > ?`,
+        )
+        .all(...slice, ...slice, minWeight) as any[];
+      for (const row of rows) {
+        const edge = hydrateEdge(row);
+        out.set(edge.id, edge);
+      }
+    }
+    return [...out.values()];
+  }
+
   neighborhood(nodeId: number, depth = 1, minWeight = 0.5): { nodes: GraphNode[]; edges: GraphEdge[] } {
     const seen = new Set<number>([nodeId]);
     let frontier = [nodeId];
