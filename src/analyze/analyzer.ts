@@ -47,7 +47,9 @@ export class Analyzer {
     const rows = (this.db
       .prepare(
         `SELECT n.id, n.label, COUNT(e.id) deg FROM nodes n
-         JOIN edges e ON (e.src = n.id OR e.dst = n.id) AND e.weight > 0.5
+         JOIN edges e ON (e.src = n.id OR e.dst = n.id)
+          AND ((e.kind = 'related' AND e.weight > 1.5)
+            OR (e.kind <> 'related' AND e.weight > 0.5))
          WHERE n.kind IN ('concept','entity','topic')
          GROUP BY n.id HAVING deg >= 5
          ORDER BY deg DESC LIMIT 120`,

@@ -85,6 +85,11 @@ paths:
     get:
       tags: [Graph]
       summary: A node with its neighbors, edges and source observations
+      description: >
+        Returns evidence-backed direct connections ranked by relationship strength.
+        Incidental `related` edges must have weight greater than 1.5; explicit and
+        semantic edge kinds must have weight greater than 0.5. Each neighbor includes
+        `connectionWeight` and `sharedSources` so clients can explain the evidence.
       operationId: getNode
       parameters:
         - name: id
@@ -114,8 +119,17 @@ paths:
                       created_at: 1787552976212
                       updated_at: 1787553009773
                       meta: null
-                    neighbors: []
-                    edges: []
+                    neighbors:
+                      - id: 70
+                        key: diana
+                        label: Diana
+                        kind: entity
+                        weight: 120
+                        mentions: 80
+                        connectionWeight: 62.5
+                        sharedSources: 49
+                    edges:
+                      - { id: 1, src: 69, dst: 70, kind: related, weight: 62.5, created_at: 1787552976212, updated_at: 1787553009773 }
                     observations:
                       - snippet: "the users table has..."
                         created_at: 1787552976212
@@ -695,9 +709,18 @@ components:
       required: [node, neighbors, edges, observations]
       properties:
         node: { $ref: '#/components/schemas/Node' }
-        neighbors: { type: array, items: { $ref: '#/components/schemas/Node' } }
+        neighbors: { type: array, items: { $ref: '#/components/schemas/ConnectionNode' } }
         edges: { type: array, items: { $ref: '#/components/schemas/Edge' } }
         observations: { type: array, items: { $ref: '#/components/schemas/Observation' } }
+
+    ConnectionNode:
+      allOf:
+        - $ref: '#/components/schemas/Node'
+        - type: object
+          required: [connectionWeight, sharedSources]
+          properties:
+            connectionWeight: { type: number, description: Sum of eligible direct edge weights to the selected node }
+            sharedSources: { type: integer, description: Number of source conversations containing both concepts }
 
     IngestResult:
       type: object

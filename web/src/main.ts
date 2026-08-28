@@ -7,6 +7,7 @@ interface ViewNode {
   id: number; label: string; kind: string; weight: number; salience?: number; mentions: number;
   degree: number; community: number; world: number; sub: string;
 }
+interface ConnectionNode extends ViewNode { connectionWeight: number; sharedSources: number; }
 interface ViewEdge { id: number; source: number; target: number; kind: string; weight: number; }
 interface SubCluster { key: string; label: string; size: number; }
 interface World { id: number; label: string; size: number; subs: SubCluster[]; }
@@ -204,9 +205,9 @@ async function openNode(id: number) {
   const panel = $('#panel');
   panel.classList.remove('hidden');
   const seen = new Set<string>();
-  const neighbors = (data.neighbors as ViewNode[])
+  const neighbors = (data.neighbors as ConnectionNode[])
     .filter((x) => { const k = x.label.toLowerCase().trim(); if (!k || seen.has(k)) return false; seen.add(k); return true; })
-    .sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0))
+    .sort((a, b) => b.connectionWeight - a.connectionWeight || b.sharedSources - a.sharedSources)
     .slice(0, 40);
   const obs = buildProvenance(data.observations as { snippet: string }[], n.label);
   const world = worlds.find((w) => graph.hasNode(String(id)) && graph.getNodeAttribute(String(id), 'world') === w.id);
@@ -215,7 +216,7 @@ async function openNode(id: number) {
     <div><span class="chip">${n.kind}</span><span class="chip">weight ${n.weight.toFixed(1)}</span><span class="chip">${n.mentions} mentions</span>${world ? `<span class="chip">🌐 ${escapeHtml(world.label)}</span>` : ''}</div>
     ${n.summary ? `<p>${escapeHtml(n.summary)}</p>` : ''}
     <div class="section"><h3>Connections (${neighbors.length})</h3>
-      ${neighbors.map((x) => `<span class="chip neighbor" data-id="${x.id}">${escapeHtml(x.label)}</span>`).join('') || '<span class="empty">No connections yet.</span>'}
+      ${neighbors.map((x) => `<span class="chip neighbor" data-id="${x.id}" title="relationship strength ${x.connectionWeight.toFixed(1)} · ${x.sharedSources} shared sources">${escapeHtml(x.label)} <small>${x.connectionWeight.toFixed(1)}</small></span>`).join('') || '<span class="empty">No evidence-backed connections yet.</span>'}
     </div>
     <div class="section"><h3>Where it came from</h3>
       ${obs.length ? obs.map((s) => `<div class="obs">${s}</div>`).join('') : '<span class="empty">No observations.</span>'}

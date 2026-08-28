@@ -159,10 +159,12 @@ web/                   Vite + Sigma.js WebGL front-end
 - `sources` — every imported conversation/session, optionally attributed to a `project`.
 - `nodes` — concepts/entities/decisions/patterns, with `weight` (importance) and `mentions`.
 - `edges` — typed, weighted relations (`related`, `similar`, `decided`, ...). Repeated
-  mentions reinforce weight, so frequently-discussed ideas "light up". One-off
-  co-occurrences (two concepts that shared a single message just once) are treated as
-  noise and excluded everywhere — the graph, a node's connections, and hub/pattern
-  analysis alike; only reinforced links count.
+  mentions reinforce weight, so frequently-discussed ideas "light up". Incidental
+  co-occurrences must be reinforced across at least four local mentions before they
+  count in the graph, node connections, or hub/pattern analysis. Explicit and semantic
+  relationships use their own evidence threshold. The node panel ranks connections by
+  relationship strength—not the neighbour's global popularity—and shows strength plus
+  shared-source count so the evidence is inspectable.
 - `observations` — every mention, linked to its `source` for provenance.
 - `node_embeddings` — on-device vectors used for semantic auto-linking **and** to make
   graph clustering group concepts by meaning. Backfill them for the top concepts with
@@ -173,6 +175,8 @@ web/                   Vite + Sigma.js WebGL front-end
   automatically downweights concepts whose links are spread across many subjects;
   source-distribution similarity and normalized embedding centroids then determine
   which regions belong together. The result is deterministic for the same active data.
+- During import, co-occurrence edges are created only for concepts appearing near each
+  other in the same sentence/line, rather than connecting every concept in a message.
 - `patterns` / `tools` — analyzer output and the self-updating tool registry.
 
 Everything is one file (`data/neuro.sqlite`). Delete it to reset.

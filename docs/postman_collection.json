@@ -207,7 +207,7 @@
         "{{nodeId}}"
        ]
       },
-      "description": "A node with neighbors, edges and source observations."
+      "description": "A node with evidence-backed neighbors ranked by relationship strength. Each neighbor includes connectionWeight and sharedSources; weak incidental co-occurrences are excluded."
      },
      "response": [
       {
@@ -236,7 +236,7 @@
          "value": "application/json; charset=utf-8"
         }
        ],
-       "body": "{\n  \"node\": { \"id\": 69, \"key\": \"users\", \"label\": \"Users\", \"kind\": \"entity\", \"summary\": null, \"weight\": 512.5, \"mentions\": 210, \"created_at\": 1787552976212, \"updated_at\": 1787553009773, \"meta\": null },\n  \"neighbors\": [],\n  \"edges\": [],\n  \"observations\": [\n    { \"snippet\": \"the users table has...\", \"created_at\": 1787552976212, \"source_id\": 12 }\n  ]\n}"
+       "body": "{\n  \"node\": { \"id\": 69, \"key\": \"sara\", \"label\": \"Sara\", \"kind\": \"entity\", \"summary\": null, \"weight\": 1220.5, \"mentions\": 707, \"created_at\": 1787552976212, \"updated_at\": 1787553009773, \"meta\": null },\n  \"neighbors\": [\n    { \"id\": 70, \"key\": \"diana\", \"label\": \"Diana\", \"kind\": \"entity\", \"summary\": null, \"weight\": 627.8, \"mentions\": 405, \"created_at\": 1787552976212, \"updated_at\": 1787553009773, \"meta\": null, \"connectionWeight\": 62.5, \"sharedSources\": 49 }\n  ],\n  \"edges\": [\n    { \"id\": 1, \"src\": 69, \"dst\": 70, \"kind\": \"related\", \"weight\": 62.5, \"created_at\": 1787552976212, \"updated_at\": 1787553009773, \"meta\": null }\n  ],\n  \"observations\": [\n    { \"snippet\": \"Sara and Diana discussed...\", \"created_at\": 1787552976212, \"source_id\": 12 }\n  ]\n}"
       },
       {
        "name": "200 Not Found (app error)",

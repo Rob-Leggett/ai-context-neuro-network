@@ -55,10 +55,10 @@ export async function buildServer() {
     const id = Number((req.params as any).id);
     const node = ctx.store.getNode(id);
     if (!node) return { error: 'not found' };
-    const nb = ctx.store.neighborhood(id, 1);
+    const nb = ctx.store.connections(id);
     return {
       node,
-      neighbors: nb.nodes.filter((n) => n.id !== id && !isGeneric(n.label)),
+      neighbors: nb.nodes.filter((n) => !isGeneric(n.label)),
       edges: nb.edges,
       observations: ctx.store.observationsForNode(id, 40),
     };

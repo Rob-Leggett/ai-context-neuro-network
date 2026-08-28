@@ -263,7 +263,9 @@ function discoverWorlds(
 export function buildGraphView(store: GraphStore, limit = 1500): GraphView {
   const nodes = store.topNodes(limit);
   const idSet = new Set(nodes.map((n) => n.id));
-  const edges = store.edgesForNodes([...idSet]).filter((e) => idSet.has(e.src) && idSet.has(e.dst));
+  const edges = store
+    .edgesForNodes([...idSet])
+    .filter((e) => (e.kind !== 'related' || e.weight > 1.5) && idSet.has(e.src) && idSet.has(e.dst));
 
   const g = new Graph({ type: 'undirected', multi: false });
   for (const n of nodes) g.addNode(String(n.id), { weight: n.weight });

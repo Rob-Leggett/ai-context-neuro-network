@@ -147,9 +147,21 @@ export function extract(text: string, maxConcepts = 12): ExtractionResult {
   }));
 
   const relations: { a: string; b: string; kind: string }[] = [];
+  const localSpans = preClean(text)
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((span) => span.trim())
+    .filter(Boolean);
   for (let i = 0; i < concepts.length; i++) {
     for (let j = i + 1; j < concepts.length; j++) {
-      relations.push({ a: concepts[i].label, b: concepts[j].label, kind: 'related' });
+      const a = concepts[i].label.toLowerCase();
+      const b = concepts[j].label.toLowerCase();
+      const local = localSpans.some((span) => {
+        const lower = span.toLowerCase();
+        const ai = lower.indexOf(a);
+        const bi = lower.indexOf(b);
+        return ai >= 0 && bi >= 0 && Math.abs(ai - bi) <= 180;
+      });
+      if (local) relations.push({ a: concepts[i].label, b: concepts[j].label, kind: 'related' });
     }
   }
 

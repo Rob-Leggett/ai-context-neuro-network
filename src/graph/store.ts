@@ -459,16 +459,90 @@ export class GraphStore extends EventEmitter {
     return [...out.values()];
   }
 
+  /**
+   * Evidence-backed direct connections, ranked by relationship strength rather
+   * than the neighbour's global popularity. Incidental `related` edges require
+   * repeated reinforcement; explicit/semantic edge kinds remain eligible.
+   */
+  connections(
+    nodeId: number,
+    limit = 40,
+  ): {
+    nodes: (GraphNode & { connectionWeight: number; sharedSources: number })[];
+    edges: GraphEdge[];
+  } {
+    const hidden = this.hiddenNodeSubquery();
+    const hiddenFilter = hidden
+      ? `AND (CASE WHEN e.src = ? THEN e.dst ELSE e.src END) NOT IN (${hidden})`
+      : '';
+    const params = hidden ? [nodeId, nodeId, nodeId, nodeId, limit] : [nodeId, nodeId, nodeId, limit];
+    const rows = this.db
+      .prepare(
+        `SELECT CASE WHEN e.src = ? THEN e.dst ELSE e.src END AS neighbor_id,
+                SUM(e.weight) AS connection_weight
+           FROM edges e
+          WHERE (e.src = ? OR e.dst = ?)
+            AND ((e.kind = 'related' AND e.weight > 1.5)
+              OR (e.kind <> 'related' AND e.weight > 0.5))
+            ${hiddenFilter}
+          GROUP BY neighbor_id
+          ORDER BY connection_weight DESC
+          LIMIT ?`,
+      )
+      .all(...params) as { neighbor_id: number; connection_weight: number }[];
+    if (rows.length === 0) return { nodes: [], edges: [] };
+
+    const ids = rows.map((row) => row.neighbor_id);
+    const placeholders = ids.map(() => '?').join(',');
+    const sharedRows = this.db
+      .prepare(
+        `SELECT o.node_id, COUNT(DISTINCT o.source_id) AS shared_sources
+           FROM observations o
+          WHERE o.node_id IN (${placeholders})
+            AND o.source_id IS NOT NULL
+            AND o.source_id IN (
+              SELECT source_id FROM observations WHERE node_id = ? AND source_id IS NOT NULL
+            )
+          GROUP BY o.node_id`,
+      )
+      .all(...ids, nodeId) as { node_id: number; shared_sources: number }[];
+    const shared = new Map(sharedRows.map((row) => [row.node_id, row.shared_sources]));
+    const weight = new Map(rows.map((row) => [row.neighbor_id, row.connection_weight]));
+    const nodes = ids
+      .map((id) => this.getNode(id))
+      .filter(Boolean)
+      .map((node) => ({
+        ...node!,
+        connectionWeight: weight.get(node!.id) ?? 0,
+        sharedSources: shared.get(node!.id) ?? 0,
+      }));
+    const edges = this.db
+      .prepare(
+        `SELECT * FROM edges
+          WHERE ((src = ? AND dst IN (${placeholders})) OR (dst = ? AND src IN (${placeholders})))
+            AND ((kind = 'related' AND weight > 1.5)
+              OR (kind <> 'related' AND weight > 0.5))`,
+      )
+      .all(nodeId, ...ids, nodeId, ...ids) as any[];
+    return { nodes, edges: edges.map(hydrateEdge) };
+  }
+
   neighborhood(nodeId: number, depth = 1, minWeight = 0.5): { nodes: GraphNode[]; edges: GraphEdge[] } {
     const seen = new Set<number>([nodeId]);
     let frontier = [nodeId];
     const edges: GraphEdge[] = [];
+    const relatedMinWeight = Math.max(1.5, minWeight);
     for (let d = 0; d < depth; d++) {
       if (frontier.length === 0) break;
       const placeholders = frontier.map(() => '?').join(',');
       const rows = this.db
-        .prepare(`SELECT * FROM edges WHERE (src IN (${placeholders}) OR dst IN (${placeholders})) AND weight > ?`)
-        .all(...frontier, ...frontier, minWeight) as any[];
+        .prepare(
+          `SELECT * FROM edges
+            WHERE (src IN (${placeholders}) OR dst IN (${placeholders}))
+              AND ((kind = 'related' AND weight > ?)
+                OR (kind <> 'related' AND weight > ?))`,
+        )
+        .all(...frontier, ...frontier, relatedMinWeight, minWeight) as any[];
       const next: number[] = [];
       for (const r of rows) {
         edges.push(hydrateEdge(r));
