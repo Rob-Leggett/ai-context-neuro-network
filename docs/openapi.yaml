@@ -661,7 +661,7 @@ components:
       required: [id, label, size, subs]
       properties:
         id: { type: integer }
-        label: { type: string, description: Representative label of the world's strongest region }
+        label: { type: string, description: Single representative concept shown on the root world bubble }
         size: { type: integer, description: Number of member concepts }
         subs:
           type: array

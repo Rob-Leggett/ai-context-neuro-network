@@ -478,8 +478,7 @@ export function buildGraphView(store: GraphStore, limit = 1500): GraphView {
         })
         .sort((a, b) => b.size - a.size);
       const subs: SubCluster[] = rankedSubs.map(({ key, label, size }) => ({ key, label, size }));
-      const representative = rankedSubs.slice().sort((a, b) => b.score - a.score)[0];
-      return { id, label: representative?.label ?? labelGroup(members).label, size: members.length, subs };
+      return { id, label: labelGroup(members).label.split('/')[0], size: members.length, subs };
     })
     .sort((a, b) => b.size - a.size);
 

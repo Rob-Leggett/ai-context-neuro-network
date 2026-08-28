@@ -174,31 +174,16 @@ function lodReducer(_node: string, data: any) {
   }
   // concept nodes
   const importance = (data.weight ?? 1) + (data.degree ?? 0);
-  if (band === 'world') {
-    // dim colored clouds under the world labels
-    res.label = '';
-    res.size = Math.max(1.5, (data.size ?? 3) * 0.5);
-    res.color = fade(data.color, 0.45);
-  } else if (band === 'sub') {
-    res.label = importance > 10 * ratio ? data.label : '';
-  } else {
-    res.forceLabel = importance > 5 * ratio;
-    if (importance <= 3 * ratio) res.label = '';
-  }
+  if (band !== 'concept') { res.hidden = true; return res; }
+  res.forceLabel = importance > 5 * ratio;
+  if (importance <= 3 * ratio) res.label = '';
   return res;
-}
-
-function fade(color: string, alpha: number): string {
-  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color || '');
-  if (m) return `rgba(${parseInt(m[1], 16)},${parseInt(m[2], 16)},${parseInt(m[3], 16)},${alpha})`;
-  return color;
 }
 
 function edgeLodReducer(_edge: string, data: any) {
   const band = zoomBand(renderer.getCamera().ratio);
   const res: any = { ...data };
-  if (band === 'world') res.hidden = true;
-  else if (band === 'sub') res.color = 'rgba(120,140,170,0.07)';
+  if (band !== 'concept') res.hidden = true;
   return res;
 }
 
