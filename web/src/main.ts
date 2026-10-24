@@ -1,6 +1,9 @@
 import Graph from 'graphology';
-import Sigma from 'sigma';
+import Sigma, { DEFAULT_STYLES } from 'sigma';
+import type { EdgeDisplayData, NodeDisplayData } from 'sigma/types';
 import forceAtlas2 from 'graphology-layout-forceatlas2';
+
+type Attributes = Record<string, any>;
 
 // ---- types (mirror server graph-view) --------------------------------------
 interface ViewNode {
@@ -162,36 +165,49 @@ function zoomBand(ratio: number): 'world' | 'sub' | 'concept' {
   return 'concept';
 }
 
-function lodReducer(_node: string, data: any) {
+type NodePatch = Partial<NodeDisplayData>;
+type EdgePatch = Partial<EdgeDisplayData>;
+
+function lodReducer(attrs: Attributes): NodePatch {
   const ratio = renderer.getCamera().ratio;
   const band = zoomBand(ratio);
-  const res: any = { ...data };
-  if (data.isCluster) {
-    const show = (data.level === 'world' && band === 'world') || (data.level === 'sub' && band === 'sub');
-    if (!show) { res.hidden = true; return res; }
-    res.forceLabel = true;
-    res.zIndex = 3;
-    return res;
+  if (attrs.isCluster) {
+    const show = (attrs.level === 'world' && band === 'world') || (attrs.level === 'sub' && band === 'sub');
+    if (!show) return { visibility: 'hidden' };
+    return { labelVisibility: 'visible', zIndex: 3 };
   }
   // concept nodes
-  const importance = (data.weight ?? 1) + (data.degree ?? 0);
-  if (band !== 'concept') { res.hidden = true; return res; }
-  res.forceLabel = importance > 5 * ratio;
-  if (importance <= 3 * ratio) res.label = '';
-  return res;
+  const importance = (attrs.weight ?? 1) + (attrs.degree ?? 0);
+  if (band !== 'concept') return { visibility: 'hidden' };
+  if (importance <= 3 * ratio) return { label: '' };
+  return importance > 5 * ratio ? { labelVisibility: 'visible' } : {};
 }
 
-function edgeLodReducer(_edge: string, data: any) {
-  const band = zoomBand(renderer.getCamera().ratio);
-  const res: any = { ...data };
-  if (band !== 'concept') res.hidden = true;
-  return res;
+function edgeLodReducer(): EdgePatch {
+  return zoomBand(renderer.getCamera().ratio) !== 'concept' ? { visibility: 'hidden' } : {};
 }
+
+function highlightReducer(id: string, node: string, attrs: Attributes): NodePatch {
+  if (attrs.isCluster) return { visibility: 'hidden' };
+  if (node === id) return { highlighted: true, labelVisibility: 'visible', zIndex: 2 };
+  if (!graph.areNeighbors(id, node)) return { color: '#2a3446', label: '' };
+  return { labelVisibility: 'visible' };
+}
+
+function highlightEdgeReducer(id: string, edge: string): EdgePatch {
+  const [s, t] = graph.extremities(edge);
+  return s !== id && t !== id ? { visibility: 'hidden' } : {};
+}
+
+// Sigma 4 reducers are fixed at construction, so they dispatch on the current
+// view mode (LOD vs. highlighted node) and we just refresh when it changes.
+const nodeReducer = (node: string, _data: NodeDisplayData, attrs: Attributes): NodePatch =>
+  highlighted ? highlightReducer(highlighted, node, attrs) : lodReducer(attrs);
+const edgeReducer = (edge: string): EdgePatch =>
+  highlighted ? highlightEdgeReducer(highlighted, edge) : edgeLodReducer();
 
 function applyLOD() {
   if (highlighted) return;
-  renderer.setSetting('nodeReducer', lodReducer);
-  renderer.setSetting('edgeReducer', edgeLodReducer);
   renderer.refresh();
 }
 
@@ -276,20 +292,6 @@ function buildProvenance(observations: { snippet: string }[], label: string): st
 
 function highlightNode(id: string) {
   highlighted = id;
-  renderer.setSetting('nodeReducer', (node, data) => {
-    const res: any = { ...data };
-    if (data.isCluster) { res.hidden = true; return res; }
-    if (node === id) { res.highlighted = true; res.forceLabel = true; res.zIndex = 2; }
-    else if (!graph.areNeighbors(id, node)) { res.color = '#2a3446'; res.label = ''; }
-    else res.forceLabel = true;
-    return res;
-  });
-  renderer.setSetting('edgeReducer', (edge, data) => {
-    const res: any = { ...data };
-    const [s, t] = graph.extremities(edge);
-    if (s !== id && t !== id) res.hidden = true;
-    return res;
-  });
   renderer.refresh();
 }
 
@@ -487,8 +489,13 @@ function escapeHtml(s: string): string { return s.replace(/[&<>"']/g, (c) => ({ 
 // ---- boot ------------------------------------------------------------------
 async function main() {
   renderer = new Sigma(graph, $('#sigma') as HTMLDivElement, {
-    labelColor: { color: '#c8d3e6' }, labelSize: 12, labelDensity: 0.7, labelGridCellSize: 70,
-    defaultEdgeColor: 'rgba(120,140,170,0.12)', minCameraRatio: 0.05, maxCameraRatio: 12,
+    styles: {
+      nodes: { ...DEFAULT_STYLES.nodes, labelColor: '#c8d3e6', labelSize: 12 },
+      edges: { ...DEFAULT_STYLES.edges, color: { attribute: 'color', defaultValue: 'rgba(120,140,170,0.12)' } },
+    },
+    settings: { labelDensity: 0.7, labelGridCellSize: 70, minCameraRatio: 0.05, maxCameraRatio: 12 },
+    nodeReducer,
+    edgeReducer,
   });
 
   renderer.on('clickNode', ({ node }) => {
