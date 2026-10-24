@@ -22,7 +22,7 @@ export class Embedder {
     if (this.pipe) return this.pipe;
     if (!this.loading) {
       this.loading = (async () => {
-        const { pipeline, env } = await import('@xenova/transformers');
+        const { pipeline, env } = await import('@huggingface/transformers');
         const cacheDir = process.env.CNN_MODEL_CACHE || path.join(homeCacheDir, 'models');
         fs.mkdirSync(cacheDir, { recursive: true });
         env.allowLocalModels = true;

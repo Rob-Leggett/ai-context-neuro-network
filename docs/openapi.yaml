@@ -18,6 +18,10 @@ servers:
   - url: http://127.0.0.1:4319
     description: Local server (default)
 
+# The server is a local-first, single-user process bound to 127.0.0.1 by default
+# and does not implement authentication, so no security scheme applies.
+security: []
+
 tags:
   - name: Graph
     description: Read the network and its structure
@@ -124,8 +128,12 @@ paths:
                         key: diana
                         label: Diana
                         kind: entity
+                        summary: null
                         weight: 120
                         mentions: 80
+                        created_at: 1787552976212
+                        updated_at: 1787553009773
+                        meta: null
                         connectionWeight: 62.5
                         sharedSources: 49
                     edges:
@@ -280,6 +288,10 @@ paths:
                   value: { origin: copilot, enabled: false, changed: 1 }
                 invalidDecision:
                   value: { error: 'decision must be enable|disable' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '500':
           $ref: '#/components/responses/ServerError'
 
@@ -314,13 +326,15 @@ paths:
                   - $ref: '#/components/schemas/AppError'
               examples:
                 disabled:
-                  value: { project: { id: 2, name: 'Project 2', enabled: false, sources: 403 } }
+                  value: { project: { id: 2, origin: chatgpt, name: 'Project 2', enabled: false, sources: 403, created_at: 1787552976212, updated_at: 1787553009773 } }
                 invalidDecision:
                   value: { error: 'decision must be enable|disable' }
                 notFound:
                   value: { error: not found }
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '500':
           $ref: '#/components/responses/ServerError'
 
@@ -362,7 +376,7 @@ paths:
                   - $ref: '#/components/schemas/AppError'
               examples:
                 renamed:
-                  value: { project: { id: 1, name: Rob, enabled: true, sources: 1363 } }
+                  value: { project: { id: 1, origin: chatgpt, name: Rob, enabled: true, sources: 1363, created_at: 1787552976212, updated_at: 1787553009773 } }
                 notFound:
                   value: { error: not found }
         '415':
@@ -384,6 +398,10 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/AnalyzeResult' }
               example: { hubs: 20, clusters: 30, decisions: 50, recurring: 25 }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '500':
           $ref: '#/components/responses/ServerError'
 
@@ -444,6 +462,10 @@ paths:
                   proposed:
                     type: array
                     items: { $ref: '#/components/schemas/Tool' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '500':
           $ref: '#/components/responses/ServerError'
 
@@ -469,14 +491,29 @@ paths:
               schema:
                 oneOf:
                   - type: object
+                    required: [tool]
                     properties:
                       tool: { $ref: '#/components/schemas/Tool' }
                   - $ref: '#/components/schemas/AppError'
               examples:
                 approved:
-                  value: { tool: { name: recall_users, status: active } }
+                  value:
+                    tool:
+                      id: 3
+                      name: recall_users
+                      description: 'Recall everything the network knows around "Users".'
+                      spec: { action: recall_around, params: { nodeId: 69, depth: 1 } }
+                      origin: auto
+                      status: active
+                      rationale: '"Users" is a hub connecting 412 concepts, so a dedicated recall shortcut is valuable.'
+                      created_at: 1787552976212
+                      updated_at: 1787553009773
                 invalid:
-                  value: { error: decision must be approve|reject }
+                  value: { error: 'decision must be approve|reject' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '500':
           $ref: '#/components/responses/ServerError'
 
@@ -507,6 +544,7 @@ paths:
               schema:
                 oneOf:
                   - type: object
+                    required: [result]
                     properties:
                       result: {}
                   - $ref: '#/components/schemas/AppError'
@@ -521,6 +559,8 @@ paths:
                   value: { error: 'Tool "recall_users" is not approved (status: proposed).' }
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '500':
           $ref: '#/components/responses/ServerError'
 
@@ -547,7 +587,7 @@ components:
             statusCode: 415
             code: FST_ERR_CTP_INVALID_MEDIA_TYPE
             error: Unsupported Media Type
-            message: 'Unsupported Media Type: application/x-www-form-urlencoded'
+            message: Unsupported Media Type
     NotFound:
       description: Route not found
       content:
@@ -573,15 +613,23 @@ components:
         error: { type: string }
         message: { type: string }
 
-    Stats:
+    GraphCounts:
       type: object
-      required: [nodes, edges, sources, observations, embeddings]
+      description: Counts of enabled network content.
+      required: [nodes, edges, sources, observations]
       properties:
         nodes: { type: integer }
         edges: { type: integer }
         sources: { type: integer }
         observations: { type: integer }
-        embeddings: { type: boolean, description: Whether on-device embeddings are enabled }
+
+    Stats:
+      allOf:
+        - $ref: '#/components/schemas/GraphCounts'
+        - type: object
+          required: [embeddings]
+          properties:
+            embeddings: { type: boolean, description: Whether on-device embeddings are enabled }
 
     Project:
       type: object
@@ -592,7 +640,7 @@ components:
         origin: { type: string, enum: [chatgpt, copilot, mcp, manual], description: Source system the project came from }
         external_id: { type: [string, 'null'], description: Origin project id (e.g. ChatGPT template/gizmo id) }
         name: { type: string, description: 'Display name (placeholder like "Project 1" until renamed).' }
-        enabled: { type: boolean, description: When false, the project is hidden from all views }
+        enabled: { type: boolean, description: 'When false, the project is hidden from all views.' }
         sources: { type: integer, description: Number of conversations/sessions attributed to the project }
         created_at: { type: integer, description: Epoch ms }
         updated_at: { type: integer, description: Epoch ms }
@@ -666,7 +714,7 @@ components:
       required: [key, label, size]
       properties:
         key: { type: string, description: 'Region key, formatted `world:sub`.' }
-        label: { type: string, description: Representative label built from central, distinctive members }
+        label: { type: string, description: 'Representative label built from central, distinctive members.' }
         size: { type: integer }
 
     World:
@@ -675,7 +723,7 @@ components:
       required: [id, label, size, subs]
       properties:
         id: { type: integer }
-        label: { type: string, description: Broad semantic category shown on the root world bubble, such as People, Networking or Identity }
+        label: { type: string, description: 'Broad semantic category shown on the root world bubble, such as People, Networking or Identity.' }
         size: { type: integer, description: Number of member concepts }
         subs:
           type: array
@@ -730,7 +778,7 @@ components:
         conceptsTouched: { type: integer }
         edges: { type: integer }
         decisions: { type: integer }
-        stats: { $ref: '#/components/schemas/Stats' }
+        stats: { $ref: '#/components/schemas/GraphCounts' }
 
     AnalyzeResult:
       type: object

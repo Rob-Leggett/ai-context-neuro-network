@@ -426,7 +426,7 @@
          "value": "application/json; charset=utf-8"
         }
        ],
-       "body": "{\n  \"ok\": true,\n  \"conceptsTouched\": 12,\n  \"edges\": 78,\n  \"decisions\": 1,\n  \"stats\": { \"nodes\": 31695, \"edges\": 287796, \"sources\": 92, \"observations\": 69390, \"embeddings\": false }\n}"
+       "body": "{\n  \"ok\": true,\n  \"conceptsTouched\": 12,\n  \"edges\": 78,\n  \"decisions\": 1,\n  \"stats\": { \"nodes\": 31695, \"edges\": 287796, \"sources\": 92, \"observations\": 69390 }\n}"
       },
       {
        "name": "200 Missing text (app error)",
@@ -498,7 +498,7 @@
          "value": "application/json; charset=utf-8"
         }
        ],
-       "body": "{\n  \"statusCode\": 415,\n  \"code\": \"FST_ERR_CTP_INVALID_MEDIA_TYPE\",\n  \"error\": \"Unsupported Media Type\",\n  \"message\": \"Unsupported Media Type: application/x-www-form-urlencoded\"\n}"
+       "body": "{\n  \"statusCode\": 415,\n  \"code\": \"FST_ERR_CTP_INVALID_MEDIA_TYPE\",\n  \"error\": \"Unsupported Media Type\",\n  \"message\": \"Unsupported Media Type\"\n}"
       },
       {
        "name": "400 Bad Request (invalid JSON)",
@@ -1400,7 +1400,7 @@
          "value": "application/json; charset=utf-8"
         }
        ],
-       "body": "{\n  \"statusCode\": 415,\n  \"code\": \"FST_ERR_CTP_INVALID_MEDIA_TYPE\",\n  \"error\": \"Unsupported Media Type\",\n  \"message\": \"Unsupported Media Type: text/plain\"\n}"
+       "body": "{\n  \"statusCode\": 415,\n  \"code\": \"FST_ERR_CTP_INVALID_MEDIA_TYPE\",\n  \"error\": \"Unsupported Media Type\",\n  \"message\": \"Unsupported Media Type\"\n}"
       }
      ]
     }

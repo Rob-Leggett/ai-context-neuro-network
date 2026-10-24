@@ -18,7 +18,7 @@ on your machine with a tiny footprint.
 | **Zoom micro ↔ macro** | Hierarchical **Leiden** clustering builds **worlds → regions → concepts** from co-occurrence, on-device semantic similarity and shared source context. The root shows one broad semantic category per world (for example **People**, **Networking** or **Identity**); zooming reveals its specific regions, then individual concepts. A preliminary partition automatically suppresses diffuse bridge concepts, and the grouping/count remain data-determined—no fixed count or hard-coded exclusion words. |
 | **Grows from ChatGPT & Copilot** | An MCP server (`remember` / `link` / `recall`) lets both assistants write to the network *live*, **plus** importers for ChatGPT exports and the Copilot CLI session store. |
 | **Toggleable sources & projects** | ChatGPT "projects" and Copilot sessions are imported as independent groups you can switch **on/off** — toggle a whole source (all ChatGPT or all Copilot) or an individual project to hide or reveal slices of history from the graph, search and stats without deleting anything. |
-| **Local & low-resource** | Single Node process + one SQLite file. Optional on-device embeddings (a ~25 MB MiniLM model). No cloud, no external services. |
+| **Local & low-resource** | Single Node process + one SQLite file. Optional on-device embeddings (a ~25 MB MiniLM model via transformers.js). No cloud, no external services. |
 | **UI navigable** | Search, focus/zoom-to-node, neighborhood expansion, live updates over WebSocket. |
 | **Updates its own tools** | The network inspects its own structure and *proposes* new MCP tools (e.g. a recall shortcut for a hub concept). You approve them; approved tools become live MCP tools. |
 | **Detects patterns & decisions** | An analyzer mines hubs, tight clusters, recurring themes and captured decisions and surfaces them at the macro level. |
@@ -26,6 +26,11 @@ on your machine with a tiny footprint.
 ---
 
 ## Quick start
+
+Requires **Node.js 24 LTS** (npm 11). Native/install scripts are limited to the
+packages allow-listed under `allowScripts` in `package.json` (`better-sqlite3`,
+`onnxruntime-node`, `esbuild`, `fsevents`). Embeddings use
+[`@huggingface/transformers`](https://huggingface.co/docs/transformers.js).
 
 ```bash
 npm install
