@@ -27,7 +27,7 @@ on your machine with a tiny footprint.
 
 ## Quick start
 
-Requires **Node.js 24 LTS** (npm 11). Native/install scripts are limited to the
+Requires **Node.js 26** (see `.nvmrc`; npm 11). Native/install scripts are limited to the
 packages allow-listed under `allowScripts` in `package.json` (`better-sqlite3`,
 `onnxruntime-node`, `esbuild`, `fsevents`). Embeddings use
 [`@huggingface/transformers`](https://huggingface.co/docs/transformers.js).

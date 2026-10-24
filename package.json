@@ -4,7 +4,7 @@
   "description": "A local-first neuro network that captures, connects, visualizes and grows context from your AI chats.",
   "type": "module",
   "engines": {
-    "node": ">=24"
+    "node": ">=26"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -35,7 +35,7 @@
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
-    "@types/node": "^24.19.2",
+    "@types/node": "^26.6.5",
     "sigma": "^4.0.3",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
