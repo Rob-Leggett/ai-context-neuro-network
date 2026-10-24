@@ -1,5 +1,7 @@
 # ⚡ Context Neuro Network
 
+[![Node.js 26](https://img.shields.io/badge/Node.js-26-5FA04E?logo=nodedotjs&logoColor=white)](https://nodejs.org/) [![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![Fastify 5.12](https://img.shields.io/badge/Fastify-5.12-000000?logo=fastify&logoColor=white)](https://fastify.dev/) [![MCP SDK 1.32](https://img.shields.io/badge/MCP%20SDK-1.32-000000?logo=modelcontextprotocol&logoColor=white)](https://modelcontextprotocol.io/)
+
 A **local-first "second brain"** that captures the connections formed while you work with
 AI assistants, lets you **see them visually**, **zoom from macro clusters down to micro
 concepts**, and **grows automatically** as you chat with ChatGPT and Copilot — all running
